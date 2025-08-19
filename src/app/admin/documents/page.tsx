@@ -12,10 +12,13 @@ import {
   Clock,
   Eye,
   Search,
-  Filter
+  Filter,
+  Brain,
+  Zap
 } from 'lucide-react'
 import Tesseract from 'tesseract.js'
 import * as pdfjsLib from 'pdfjs-dist'
+import { InvoiceDataDisplay } from '@/components/InvoiceDataDisplay'
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
 
 interface Document {
@@ -27,8 +30,11 @@ interface Document {
   supplier?: string
   total?: number
   items?: number
-  ocrText?: string // Nuevo campo para el texto extraído
-  lineTotals?: number[]
+  ocrText?: string
+  extractedData?: ExtractedData
+  ocrData?: ExtractedData
+  gptData?: ExtractedData
+  processingMethod?: 'ocr' | 'gpt-vision' | 'hybrid'
 }
 
 interface ExtractedData {
@@ -78,7 +84,7 @@ function extractDataFromText(text: string): ExtractedData {
     return Number.isFinite(num) ? sign * num : undefined
   }
   // Importes tipo: 1.234,56 | 300,00 | -300,00 | € 300,00
-  const amountRegex = /[€$]?\s*[+-]?\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{2})|[€$]?\s*[+-]?\d+(?:[\.,]\d{2})/g
+  const amountRegex = /[€$]?\s*[+-]?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})|[€$]?\s*[+-]?\d+(?:[.,]\d{2})/g
 
   const extracted: ExtractedData = {
     documentType: normalizedText.toLowerCase().includes('factura') ? 'invoice' : 'delivery_note',
@@ -157,12 +163,12 @@ function extractDataFromText(text: string): ExtractedData {
   }
 
   // Totales documento (evitar confusión con líneas)
-  const totalMatch = normalizedText.match(/TOTAL\s*:?\s*[€$]?\s*([+-]?\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{2})|[+-]?\d+(?:[\.,]\d{2}))/i)
+  const totalMatch = normalizedText.match(/TOTAL\s*:?\s*[€$]?\s*([+-]?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})|[+-]?\d+(?:[.,]\d{2}))/i)
   if (totalMatch) {
     const v = parseEuro(totalMatch[1])
     if (v !== undefined) extracted.totals!.total = v
   }
-  const subtotalMatch = normalizedText.match(/SUBTOTAL\s*:?\s*[€$]?\s*([+-]?\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{2})|[+-]?\d+(?:[\.,]\d{2}))/i)
+  const subtotalMatch = normalizedText.match(/SUBTOTAL\s*:?\s*[€$]?\s*([+-]?\d{1,3}(?:[.,]\d{3})*(?:[.,]\d{2})|[+-]?\d+(?:[.,]\d{2}))/i)
   if (subtotalMatch) {
     const v = parseEuro(subtotalMatch[1])
     if (v !== undefined) extracted.totals!.subtotal = v
@@ -259,8 +265,9 @@ export default function DocumentsPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
-  // Añadir nuevo estado para mostrar el texto en progreso
   const [ocrProgress, setOcrProgress] = useState<{ [docId: string]: string }>({})
+  const [processingMethod, setProcessingMethod] = useState<'ocr' | 'gpt-vision' | 'hybrid'>('gpt-vision')
+  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null)
 
   const filteredDocuments = documents.filter(doc => {
     const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -268,6 +275,49 @@ export default function DocumentsPage() {
     const matchesStatus = statusFilter === 'all' || doc.status === statusFilter
     return matchesSearch && matchesStatus
   })
+
+  // Función para procesar con GPT-4o mini
+  const processWithGPT4Vision = async (file: File): Promise<{ extractedData: ExtractedData, ocrData?: ExtractedData, gptData?: ExtractedData }> => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const response = await fetch('/api/ocr/gpt-vision', {
+      method: 'POST',
+      body: formData
+    })
+
+    if (!response.ok) {
+      throw new Error(`Error en GPT-4o mini: ${response.statusText}`)
+    }
+
+    const result = await response.json()
+    return {
+      extractedData: result.extractedData,
+      gptData: result.extractedData
+    }
+  }
+
+  // Función para procesar con método híbrido
+  const processWithHybrid = async (file: File): Promise<{ extractedData: ExtractedData, ocrData?: ExtractedData, gptData?: ExtractedData }> => {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const response = await fetch('/api/ocr/hybrid', {
+      method: 'POST',
+      body: formData
+    })
+
+    if (!response.ok) {
+      throw new Error(`Error en procesamiento híbrido: ${response.statusText}`)
+    }
+
+    const result = await response.json()
+    return {
+      extractedData: result.extractedData,
+      ocrData: result.ocrData,
+      gptData: result.gptData
+    }
+  }
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
@@ -282,60 +332,74 @@ export default function DocumentsPage() {
           name: file.name,
           type: file.name.toLowerCase().includes('factura') ? 'invoice' : 'delivery_note',
           status: 'processing',
-          uploadedAt: new Date()
+          uploadedAt: new Date(),
+          processingMethod
         }
         setDocuments(prev => [newDoc, ...prev])
+        
         try {
-          let ocrResult
-          if (isPdf) {
-            // PDF multipágina: mostrar progreso
-            let fullText = ''
-            const arrayBuffer = await file.arrayBuffer()
-            const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-            for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-              const page = await pdf.getPage(pageNum)
-              const viewport = page.getViewport({ scale: 2 })
-              const canvas = document.createElement('canvas')
-              const context = canvas.getContext('2d') as CanvasRenderingContext2D
-              canvas.width = viewport.width
-              canvas.height = viewport.height
-              await page.render({ canvasContext: context, viewport }).promise
-              enhanceCanvasForOcr(canvas)
-              const dataUrl = canvas.toDataURL('image/png')
+          let result: { extractedData: ExtractedData, ocrData?: ExtractedData, gptData?: ExtractedData }
+          
+          if (processingMethod === 'gpt-vision') {
+            // Procesar solo con GPT-4o mini
+            result = await processWithGPT4Vision(file)
+          } else if (processingMethod === 'hybrid') {
+            // Procesar con método híbrido
+            result = await processWithHybrid(file)
+          } else {
+            // Procesar solo con OCR tradicional
+            let ocrResult
+            if (isPdf) {
+              let fullText = ''
+              const arrayBuffer = await file.arrayBuffer()
+              const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+              for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+                const page = await pdf.getPage(pageNum)
+                const viewport = page.getViewport({ scale: 2 })
+                const canvas = document.createElement('canvas')
+                const context = canvas.getContext('2d') as CanvasRenderingContext2D
+                canvas.width = viewport.width
+                canvas.height = viewport.height
+                await page.render({ canvasContext: context, viewport }).promise
+                enhanceCanvasForOcr(canvas)
+                const dataUrl = canvas.toDataURL('image/png')
+                const worker = await getOcrWorker()
+                const { data: { text } } = await worker.recognize(dataUrl)
+                fullText += `\n--- Página ${pageNum} ---\n` + text
+                setOcrProgress(prev => ({ ...prev, [newDoc.id]: fullText }))
+              }
+              ocrResult = { text: fullText, extractedData: extractDataFromText(fullText) }
+            } else {
               const worker = await getOcrWorker()
-              const { data: { text } } = await worker.recognize(dataUrl)
-              fullText += `\n--- Página ${pageNum} ---\n` + text
-              setOcrProgress(prev => ({ ...prev, [newDoc.id]: fullText }))
+              const { data: { text } } = await worker.recognize(file)
+              setOcrProgress(prev => ({ ...prev, [newDoc.id]: text }))
+              ocrResult = { text, extractedData: extractDataFromText(text) }
             }
-            ocrResult = { text: fullText, extractedData: extractDataFromText(fullText) }
-      } else {
-            // Imagen
-            const worker = await getOcrWorker()
-            const { data: { text } } = await worker.recognize(file)
-            setOcrProgress(prev => ({ ...prev, [newDoc.id]: text }))
-            ocrResult = { text, extractedData: extractDataFromText(text) }
+            result = { extractedData: ocrResult.extractedData, ocrData: ocrResult.extractedData }
           }
+
           setDocuments(prev => prev.map(doc =>
             doc.id === newDoc.id
               ? {
                 ...doc,
                 status: 'completed',
-                supplier: ocrResult.extractedData?.supplier?.name,
-                total: ocrResult.extractedData?.totals?.total,
-                items: ocrResult.extractedData?.items?.length,
-                ocrText: ocrResult.text,
-                lineTotals: (ocrResult.extractedData?.items || [])
-                  .map(it => it.totalPrice)
-                  .filter((v): v is number => typeof v === 'number' && !Number.isNaN(v))
+                supplier: result.extractedData?.supplier?.name,
+                total: result.extractedData?.totals?.total,
+                items: result.extractedData?.items?.length,
+                extractedData: result.extractedData,
+                ocrData: result.ocrData,
+                gptData: result.gptData
               }
               : doc
           ))
+          
           setOcrProgress(prev => {
             const copy = { ...prev }
             delete copy[newDoc.id]
             return copy
           })
-        } catch (ocrError) {
+        } catch (error) {
+          console.error('Error procesando documento:', error)
           setDocuments(prev => prev.map(doc =>
             doc.id === newDoc.id
               ? { ...doc, status: 'error' as const }
@@ -461,13 +525,52 @@ export default function DocumentsPage() {
           <CardHeader>
             <CardTitle>Subir Documentos</CardTitle>
             <CardDescription>
-              Sube facturas y albaranes para procesamiento automático con OCR
+              Sube facturas y albaranes para procesamiento automático con IA avanzada
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
+            {/* Selección de método de procesamiento */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Método de Procesamiento:</label>
+              <div className="flex gap-2">
+                <Button
+                  variant={processingMethod === 'ocr' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setProcessingMethod('ocr')}
+                  disabled={isUploading}
+                >
+                  <FileText className="h-4 w-4 mr-2" />
+                  OCR Tradicional
+                </Button>
+                <Button
+                  variant={processingMethod === 'gpt-vision' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setProcessingMethod('gpt-vision')}
+                  disabled={isUploading}
+                >
+                  <Brain className="h-4 w-4 mr-2" />
+                  GPT-4o-Mini
+                </Button>
+                <Button
+                  variant={processingMethod === 'hybrid' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setProcessingMethod('hybrid')}
+                  disabled={isUploading}
+                >
+                  <Zap className="h-4 w-4 mr-2" />
+                  Híbrido (Recomendado)
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {processingMethod === 'ocr' && 'OCR tradicional: Rápido, sin costos adicionales'}
+                {processingMethod === 'gpt-vision' && 'GPT-4o mini: Máxima precisión, requiere API key'}
+                {processingMethod === 'hybrid' && 'Híbrido: Combina OCR y GPT-4o mini para mejor precisión'}
+              </p>
+            </div>
+
             <div className="flex items-center gap-4">
               <Input
-                    type="file"
+                type="file"
                 multiple
                 accept=".pdf,.jpg,.jpeg,.png"
                 onChange={handleFileUpload}
@@ -477,9 +580,9 @@ export default function DocumentsPage() {
               <Button disabled={isUploading}>
                 <Upload className="h-4 w-4 mr-2" />
                 {isUploading ? 'Procesando...' : 'Subir'}
-                </Button>
-              </div>
-            <p className="text-sm text-muted-foreground mt-2">
+              </Button>
+            </div>
+            <p className="text-sm text-muted-foreground">
               Formatos soportados: PDF, JPG, JPEG, PNG
             </p>
           </CardContent>
@@ -533,65 +636,71 @@ export default function DocumentsPage() {
                       {getStatusIcon(doc.status)}
                       <span className="text-sm font-medium">{getStatusText(doc.status)}</span>
                     </div>
-                        <div>
+                    <div>
                       <p className="font-medium">{doc.name}</p>
                       <p className="text-sm text-muted-foreground">
                         {getDocumentTypeText(doc.type)} • {doc.uploadedAt.toLocaleDateString()}
+                        {doc.processingMethod && (
+                          <span className="ml-2">
+                            • {doc.processingMethod === 'ocr' ? 'OCR' : 
+                               doc.processingMethod === 'gpt-vision' ? 'GPT-4o mini' : 'Híbrido'}
+                          </span>
+                        )}
                       </p>
-                      {/* Mostrar texto extraído si está disponible */}
-                      {/*{doc.status === 'completed' && (doc as any).ocrText && (
-                        <div className="mt-2">
-                          <label className="block text-xs font-semibold mb-1 text-gray-500">Texto completo extraído:</label>
-                          <textarea
-                            className="w-full bg-gray-100 rounded p-2 text-xs text-gray-700 border border-gray-200"
-                            rows={6}
-                            value={(doc as any).ocrText}
-                            readOnly
-                          />
-                        </div>
-                      )}*/}
-                      </div>
-                    </div>
-                  <div className="text-right">
-                    {doc.supplier && (
-                      <p className="text-sm font-medium">{doc.supplier}</p>
-                    )}
-                    {doc.total && (
-                      <p className="text-sm text-muted-foreground">
-                        {doc.total.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
-                      </p>
-                    )}
-                    {doc.items && (
-                      <p className="text-xs text-muted-foreground">{doc.items} productos</p>
-                    )}
                     </div>
                   </div>
-                ))}
+                  <div className="flex items-center gap-2">
+                    <div className="text-right">
+                      {doc.supplier && (
+                        <p className="text-sm font-medium">{doc.supplier}</p>
+                      )}
+                      {doc.total && (
+                        <p className="text-sm text-muted-foreground">
+                          {doc.total.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                        </p>
+                      )}
+                      {doc.items && (
+                        <p className="text-xs text-muted-foreground">{doc.items} productos</p>
+                      )}
+                    </div>
+                    {doc.status === 'completed' && doc.extractedData && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedDocument(doc)}
+                      >
+                        <Eye className="h-4 w-4 mr-2" />
+                        Ver Datos
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))}
               </div>
             </CardContent>
           </Card>
       </div>
       {(processingOcrTexts.length > 0 || selectedOcrTexts.length > 0) && (
-  <div className="mt-8">
-    <h2 className="text-lg font-bold mb-2">Texto completo extraído</h2>
-    {processingOcrTexts.map(({ id, name, text }) => (
-      <div key={id} className="mb-4">
-        <div className="font-semibold text-sm text-blue-700 mb-1">Procesando: {name}</div>
-        <div className="bg-gray-100 border border-blue-200 rounded p-3 text-xs max-h-64 overflow-auto whitespace-pre-wrap">
-          {text || 'Procesando...'}
+        <div className="mt-8">
+          <h2 className="text-lg font-bold mb-2">Texto completo extraído</h2>
+          {processingOcrTexts.map(({ id, name, text }) => (
+            <div key={id} className="mb-4">
+              <div className="font-semibold text-sm text-blue-700 mb-1">Procesando: {name}</div>
+              <div className="bg-gray-100 border border-blue-200 rounded p-3 text-xs max-h-64 overflow-auto whitespace-pre-wrap">
+                {text || 'Procesando...'}
+              </div>
+            </div>
+          ))}
+          {selectedOcrTexts.map(({ id, name, text }) => (
+            <div key={id} className="mb-4">
+              <div className="font-semibold text-sm text-green-700 mb-1">{name}</div>
+              <div className="bg-gray-100 border border-green-200 rounded p-3 text-xs max-h-96 overflow-auto whitespace-pre-wrap">
+                {text}
+              </div>
+            </div>
+          ))}
         </div>
-      </div>
-    ))}
-    {selectedOcrTexts.map(({ id, name, text }) => (
-      <div key={id} className="mb-4">
-        <div className="font-semibold text-sm text-green-700 mb-1">{name}</div>
-        <div className="bg-gray-100 border border-green-200 rounded p-3 text-xs max-h-96 overflow-auto whitespace-pre-wrap">
-          {text}
-        </div>
-      </div>
-    ))}
-  </div>
-)}
+      )}
 
       {(processingOcrPrices.length > 0 || selectedOcrPrices.length > 0) && (
         <div className="mt-6">
@@ -621,6 +730,31 @@ export default function DocumentsPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {/* Visualización de datos extraídos */}
+      {selectedDocument && selectedDocument.extractedData && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span>Datos Extraídos: {selectedDocument.name}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSelectedDocument(null)}
+              >
+                Cerrar
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <InvoiceDataDisplay
+              data={selectedDocument.extractedData}
+              ocrData={selectedDocument.ocrData}
+              gptData={selectedDocument.gptData}
+            />
+          </CardContent>
+        </Card>
       )}
     </AdminLayout>
   )
