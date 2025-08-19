@@ -13,7 +13,8 @@ import {
   Bell,
   Search,
   User,
-  LogOut
+  LogOut,
+  Building2
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/contexts/AuthContext'
@@ -46,6 +47,11 @@ const sidebarItems: SidebarItem[] = [
     icon: <FileText className="h-5 w-5" />,
     label: 'Documentos',
     href: '/admin/documents/'
+  },
+  {
+    icon: <Building2 className="h-5 w-5" />,
+    label: 'Holded',
+    href: '/admin/holded/'
   },
   {
     icon: <Settings className="h-5 w-5" />,

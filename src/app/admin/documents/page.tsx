@@ -17,9 +17,31 @@ import {
   Zap
 } from 'lucide-react'
 import Tesseract from 'tesseract.js'
-import * as pdfjsLib from 'pdfjs-dist'
 import { InvoiceDataDisplay } from '@/components/InvoiceDataDisplay'
-pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js'
+import { HoldedIntegration } from '@/components/HoldedIntegration'
+import { HoldedProductsSummary } from '@/components/HoldedProductsSummary'
+
+// Importación dinámica de pdfjs para evitar problemas de SSR
+let pdfjsLib: any = null;
+
+// Función para inicializar pdfjsLib
+const initPdfJs = async () => {
+  if (typeof window !== 'undefined' && !pdfjsLib) {
+    try {
+      const module = await import('pdfjs-dist');
+      pdfjsLib = module;
+      pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+    } catch (error) {
+      console.error('Error cargando PDF.js:', error);
+    }
+  }
+  return pdfjsLib;
+};
+
+// Inicializar cuando el componente se monta
+if (typeof window !== 'undefined') {
+  initPdfJs();
+}
 
 interface Document {
   id: string
@@ -240,8 +262,12 @@ async function ocrImageFile(file: File): Promise<{ text: string, extractedData: 
 }
 
 async function ocrPdfFile(file: File): Promise<{ text: string, extractedData: ExtractedData }> {
-      const arrayBuffer = await file.arrayBuffer()
-  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+  const pdfLib = await initPdfJs();
+  if (!pdfLib) {
+    throw new Error('PDF.js no está disponible');
+  }
+  const arrayBuffer = await file.arrayBuffer()
+  const pdf = await pdfLib.getDocument({ data: arrayBuffer }).promise
       let fullText = ''
       for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i)
@@ -350,9 +376,13 @@ export default function DocumentsPage() {
             // Procesar solo con OCR tradicional
             let ocrResult
             if (isPdf) {
+              const pdfLib = await initPdfJs();
+              if (!pdfLib) {
+                throw new Error('PDF.js no está disponible');
+              }
               let fullText = ''
               const arrayBuffer = await file.arrayBuffer()
-              const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+              const pdf = await pdfLib.getDocument({ data: arrayBuffer }).promise
               for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
                 const page = await pdf.getPage(pageNum)
                 const viewport = page.getViewport({ scale: 2 })
@@ -520,7 +550,11 @@ export default function DocumentsPage() {
             </CardContent>
           </Card>
         </div>
-        {/* Subida de archivos */}
+        
+        {/* Resumen de productos de Holded */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            {/* Subida de archivos */}
         <Card>
           <CardHeader>
             <CardTitle>Subir Documentos</CardTitle>
@@ -679,6 +713,13 @@ export default function DocumentsPage() {
               </div>
             </CardContent>
           </Card>
+          </div>
+          
+          {/* Panel lateral con productos de Holded */}
+          <div className="lg:col-span-1">
+            <HoldedProductsSummary />
+          </div>
+        </div>
       </div>
       {(processingOcrTexts.length > 0 || selectedOcrTexts.length > 0) && (
         <div className="mt-8">
@@ -753,6 +794,16 @@ export default function DocumentsPage() {
               ocrData={selectedDocument.ocrData}
               gptData={selectedDocument.gptData}
             />
+            
+            {/* Integración con Holded */}
+            <div className="mt-6">
+              <HoldedIntegration
+                extractedData={selectedDocument.extractedData}
+                onSyncComplete={(result) => {
+                  console.log('Sincronización completada:', result);
+                }}
+              />
+            </div>
           </CardContent>
         </Card>
       )}
