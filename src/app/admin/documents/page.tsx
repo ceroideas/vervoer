@@ -13,8 +13,7 @@ import {
   Eye,
   Search,
   Filter,
-  Brain,
-  Zap
+  Brain
 } from 'lucide-react'
 import Tesseract from 'tesseract.js'
 import { InvoiceDataDisplay } from '@/components/InvoiceDataDisplay'
@@ -56,7 +55,7 @@ interface Document {
   extractedData?: ExtractedData
   ocrData?: ExtractedData
   gptData?: ExtractedData
-  processingMethod?: 'ocr' | 'gpt-vision' | 'hybrid'
+  processingMethod?: 'ocr' | 'gpt-vision'
 }
 
 interface ExtractedData {
@@ -292,7 +291,7 @@ export default function DocumentsPage() {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [ocrProgress, setOcrProgress] = useState<{ [docId: string]: string }>({})
-  const [processingMethod, setProcessingMethod] = useState<'ocr' | 'gpt-vision' | 'hybrid'>('gpt-vision')
+  const [processingMethod, setProcessingMethod] = useState<'ocr' | 'gpt-vision'>('gpt-vision')
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null)
 
   const filteredDocuments = documents.filter(doc => {
@@ -323,27 +322,7 @@ export default function DocumentsPage() {
     }
   }
 
-  // Función para procesar con método híbrido
-  const processWithHybrid = async (file: File): Promise<{ extractedData: ExtractedData, ocrData?: ExtractedData, gptData?: ExtractedData }> => {
-    const formData = new FormData()
-    formData.append('file', file)
 
-    const response = await fetch('/api/ocr/hybrid', {
-      method: 'POST',
-      body: formData
-    })
-
-    if (!response.ok) {
-      throw new Error(`Error en procesamiento híbrido: ${response.statusText}`)
-    }
-
-    const result = await response.json()
-    return {
-      extractedData: result.extractedData,
-      ocrData: result.ocrData,
-      gptData: result.gptData
-    }
-  }
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
@@ -369,9 +348,6 @@ export default function DocumentsPage() {
           if (processingMethod === 'gpt-vision') {
             // Procesar solo con GPT-4o mini
             result = await processWithGPT4Vision(file)
-          } else if (processingMethod === 'hybrid') {
-            // Procesar con método híbrido
-            result = await processWithHybrid(file)
           } else {
             // Procesar solo con OCR tradicional
             let ocrResult
@@ -499,8 +475,12 @@ export default function DocumentsPage() {
     .filter((v): v is { id: string; name: string; prices: number[] } => Boolean(v))
 
   const selectedOcrPrices = documents
-    .filter(doc => doc.status === 'completed' && (doc.lineTotals?.length || 0) > 0)
-    .map(doc => ({ id: doc.id, name: doc.name, prices: doc.lineTotals as number[] }))
+    .filter(doc => doc.status === 'completed' && doc.extractedData?.items && doc.extractedData.items.length > 0)
+    .map(doc => ({ 
+      id: doc.id, 
+      name: doc.name, 
+      prices: doc.extractedData?.items?.map(item => item.totalPrice).filter((p): p is number => typeof p === 'number') || []
+    }))
 
   return (
     <AdminLayout title="Gestión de Documentos">
@@ -585,20 +565,10 @@ export default function DocumentsPage() {
                   <Brain className="h-4 w-4 mr-2" />
                   GPT-4o-Mini
                 </Button>
-                <Button
-                  variant={processingMethod === 'hybrid' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setProcessingMethod('hybrid')}
-                  disabled={isUploading}
-                >
-                  <Zap className="h-4 w-4 mr-2" />
-                  Híbrido (Recomendado)
-                </Button>
               </div>
               <p className="text-xs text-muted-foreground">
                 {processingMethod === 'ocr' && 'OCR tradicional: Rápido, sin costos adicionales'}
                 {processingMethod === 'gpt-vision' && 'GPT-4o mini: Máxima precisión, requiere API key'}
-                {processingMethod === 'hybrid' && 'Híbrido: Combina OCR y GPT-4o mini para mejor precisión'}
               </p>
             </div>
 
