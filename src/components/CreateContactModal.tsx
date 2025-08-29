@@ -70,6 +70,14 @@ export function CreateContactModal({ onContactCreated }: CreateContactModalProps
     }))
   }
 
+  const handleTagsChange = (value: string) => {
+    const tags = value.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0)
+    setFormData(prev => ({
+      ...prev,
+      tags: tags
+    }))
+  }
+
   const handleAddressChange = (field: string, value: string) => {
     setFormData(prev => ({
       ...prev,
@@ -484,7 +492,7 @@ export function CreateContactModal({ onContactCreated }: CreateContactModalProps
               <Input
                 id="tags"
                 value={formData.tags.join(', ')}
-                onChange={(e) => handleInputChange('tags', e.target.value.split(',').map(tag => tag.trim()))}
+                onChange={(e) => handleTagsChange(e.target.value)}
                 placeholder="cliente, nuevo, importante"
               />
             </div>

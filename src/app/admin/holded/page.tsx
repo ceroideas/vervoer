@@ -345,7 +345,7 @@ export default function HoldedPage() {
               <div className="space-y-4">
                 {dataType === 'products' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {filteredData.map((product: HoldedProduct) => (
+                    {(filteredData as HoldedProduct[]).map((product: HoldedProduct) => (
                       <Card key={product.id} className="hover:shadow-md transition-shadow">
                         <CardContent className="p-4">
                           <div className="flex items-start justify-between mb-2">
@@ -379,7 +379,7 @@ export default function HoldedPage() {
 
                 {dataType === 'contacts' && (
                   <div className="space-y-2">
-                    {filteredData.map((contact: HoldedContact) => (
+                    {(filteredData as HoldedContact[]).map((contact: HoldedContact) => (
                       <div key={contact.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
@@ -409,7 +409,7 @@ export default function HoldedPage() {
 
                 {dataType === 'invoices' && (
                   <div className="space-y-2">
-                    {filteredData.map((invoice: HoldedInvoice) => (
+                    {(filteredData as HoldedInvoice[]).map((invoice: HoldedInvoice) => (
                       <div key={invoice.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">

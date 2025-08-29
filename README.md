@@ -58,9 +58,10 @@ Vervoer es un sistema de gestión documental desarrollado con **Next.js 15** y *
 - **Frontend**: Next.js 15, React 18, TypeScript
 - **Styling**: Tailwind CSS
 - **UI Components**: Lucide React Icons
-- **Autenticación**: Context API (simulado)
-- **OCR**: Tesseract.js (pendiente)
-- **APIs**: Holded API (pendiente)
+- **Base de Datos**: PostgreSQL con Prisma ORM
+- **Autenticación**: JWT con bcrypt
+- **OCR**: Tesseract.js
+- **APIs**: Holded API
 
 ## 📦 Instalación
 
@@ -68,6 +69,7 @@ Vervoer es un sistema de gestión documental desarrollado con **Next.js 15** y *
 
 - Node.js 18+ 
 - npm o yarn
+- PostgreSQL 12+
 
 ### Pasos de Instalación
 
@@ -82,22 +84,38 @@ Vervoer es un sistema de gestión documental desarrollado con **Next.js 15** y *
    npm install
    ```
 
-3. **Ejecutar en desarrollo**
+3. **Configurar base de datos**
+   ```bash
+   # Ver DATABASE_SETUP.md para instrucciones completas
+   npm run db:generate
+   npm run db:push
+   npm run db:seed
+   ```
+
+4. **Configurar variables de entorno**
+   ```bash
+   # Crear archivo .env.local con las variables necesarias
+   cp .env.example .env.local
+   # Editar .env.local con tus configuraciones
+   ```
+
+5. **Ejecutar en desarrollo**
    ```bash
    npm run dev
    ```
 
-4. **Abrir en el navegador**
+6. **Abrir en el navegador**
    ```
    http://localhost:3000
    ```
 
 ## 🔐 Acceso al Sistema
 
-### Credenciales de Prueba
+### Credenciales de Acceso
 
-- **Usuario**: `admin`
-- **Contraseña**: `admin123`
+- **Admin**: `admin@vervoer.com` / `admin123`
+- **Usuario**: `usuario@vervoer.com` / `usuario123`
+- **Viewer**: `viewer@vervoer.com` / `viewer123`
 
 ### Rutas Principales
 
@@ -150,23 +168,26 @@ HOLDED_BASE_URL=https://api.holded.com/api/v1
 
 ## 🚀 Próximos Pasos
 
-### Fase 1: Sistema OCR
-- [ ] Implementar Tesseract.js
-- [ ] Crear API de procesamiento OCR
-- [ ] Desarrollar interfaz de subida de archivos
-- [ ] Extracción de datos estructurados
+### Fase 1: Sistema OCR ✅
+- [x] Implementar Tesseract.js
+- [x] Crear API de procesamiento OCR
+- [x] Desarrollar interfaz de subida de archivos
+- [x] Extracción de datos estructurados
+- [x] Guardado automático en base de datos
 
-### Fase 2: Integración Holded
-- [ ] Configurar API de Holded
-- [ ] Implementar gestión de productos
-- [ ] Implementar gestión de proveedores
-- [ ] Crear documentos en Holded
+### Fase 2: Integración Holded ✅
+- [x] Configurar API de Holded
+- [x] Implementar gestión de productos
+- [x] Implementar gestión de proveedores
+- [x] Crear documentos en Holded
+- [x] Sincronización automática
 
-### Fase 3: Base de Datos
-- [ ] Configurar base de datos
-- [ ] Implementar persistencia
-- [ ] Gestión de usuarios
-- [ ] Historial de documentos
+### Fase 3: Base de Datos ✅
+- [x] Configurar base de datos PostgreSQL
+- [x] Implementar persistencia con Prisma
+- [x] Gestión de usuarios con autenticación JWT
+- [x] Historial de documentos
+- [x] Sistema de sesiones
 
 ### Fase 4: Funcionalidades Avanzadas
 - [ ] Alertas de precios

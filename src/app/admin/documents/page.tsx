@@ -3,7 +3,7 @@ import { AdminLayout } from '@/components/admin/AdminLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   Upload, 
   FileText, 
@@ -13,12 +13,16 @@ import {
   Eye,
   Search,
   Filter,
-  Brain
+  Brain,
+  Trash2
 } from 'lucide-react'
 import Tesseract from 'tesseract.js'
 import { InvoiceDataDisplay } from '@/components/InvoiceDataDisplay'
 import { HoldedIntegration } from '@/components/HoldedIntegration'
 import { HoldedProductsSummary } from '@/components/HoldedProductsSummary'
+import { CreateProductModal } from '@/components/CreateProductModal'
+import { InvoiceProductsModal } from '@/components/InvoiceProductsModal'
+import { DocumentDetailsModal } from '@/components/DocumentDetailsModal'
 
 // Importación dinámica de pdfjs para evitar problemas de SSR
 let pdfjsLib: any = null;
@@ -42,44 +46,7 @@ if (typeof window !== 'undefined') {
   initPdfJs();
 }
 
-interface Document {
-  id: string
-  name: string
-  type: 'invoice' | 'delivery_note'
-  status: 'pending' | 'processing' | 'completed' | 'error'
-  uploadedAt: Date
-  supplier?: string
-  total?: number
-  items?: number
-  ocrText?: string
-  extractedData?: ExtractedData
-  ocrData?: ExtractedData
-  gptData?: ExtractedData
-  processingMethod?: 'ocr' | 'gpt-vision'
-}
-
-interface ExtractedData {
-  documentType: 'invoice' | 'delivery_note';
-  documentNumber?: string;
-  date?: string;
-  supplier?: {
-    name?: string;
-    address?: string;
-    taxId?: string;
-  };
-  items?: Array<{
-    reference?: string;
-    description?: string;
-    quantity?: number;
-    unitPrice?: number;
-    totalPrice?: number;
-  }>;
-  totals?: {
-    subtotal?: number;
-    tax?: number;
-    total?: number;
-  };
-}
+import { Document, ExtractedData } from '@/types/invoice'
 
 function extractDataFromText(text: string): ExtractedData {
   // Normalización ligera de espacios no separables
@@ -150,6 +117,20 @@ function extractDataFromText(text: string): ExtractedData {
     const quantityMatch = line.match(/(\d+(?:[,.]\d+)?)\s*(?:x|un|ud|uds?|pcs?)/i)
     if (quantityMatch) {
       item.quantity = parseFloat(quantityMatch[1].replace(',', '.'))
+    }
+
+    // Detectar descuentos (% o €)
+    const discountMatch = line.match(/(?:descuento|dto\.?|discount)\s*:?\s*([+-]?\d+(?:[,.]\d+)?)\s*(%|€|euros?)?/i)
+    if (discountMatch) {
+      const discountValue = parseFloat(discountMatch[1].replace(',', '.'))
+      const discountUnit = discountMatch[2]
+      if (discountUnit === '%') {
+        item.discount = discountValue
+        item.discountType = 'percentage'
+      } else {
+        item.discount = discountValue
+        item.discountType = 'amount'
+      }
     }
 
     // Importes: usar el último como total de la línea; el primero como unitario si existe
@@ -293,6 +274,46 @@ export default function DocumentsPage() {
   const [ocrProgress, setOcrProgress] = useState<{ [docId: string]: string }>({})
   const [processingMethod, setProcessingMethod] = useState<'ocr' | 'gpt-vision'>('gpt-vision')
   const [selectedDocument, setSelectedDocument] = useState<Document | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+
+  // Funciones para localStorage
+  const saveDocumentsToStorage = (docs: Document[]) => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('vervoer_documents', JSON.stringify(docs))
+    }
+  }
+
+  const loadDocumentsFromStorage = (): Document[] => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('vervoer_documents')
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored)
+          // Convertir las fechas de string a Date
+          return parsed.map((doc: any) => ({
+            ...doc,
+            uploadedAt: new Date(doc.uploadedAt)
+          }))
+        } catch (error) {
+          console.error('Error parsing stored documents:', error)
+          return []
+        }
+      }
+    }
+    return []
+  }
+
+  const deleteDocument = (documentId: string) => {
+    const updatedDocuments = documents.filter(doc => doc.id !== documentId)
+    setDocuments(updatedDocuments)
+    saveDocumentsToStorage(updatedDocuments)
+  }
+
+  // Cargar documentos al montar el componente
+  useEffect(() => {
+    const storedDocuments = loadDocumentsFromStorage()
+    setDocuments(storedDocuments)
+  }, [])
 
   const filteredDocuments = documents.filter(doc => {
     const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -316,6 +337,13 @@ export default function DocumentsPage() {
     }
 
     const result = await response.json()
+    console.log('📊 Respuesta del API GPT-4o mini:', result)
+    
+    if (!result.extractedData) {
+      console.error('❌ No se encontraron datos extraídos en la respuesta:', result)
+      throw new Error('No se pudieron extraer datos del documento')
+    }
+    
     return {
       extractedData: result.extractedData,
       gptData: result.extractedData
@@ -340,7 +368,12 @@ export default function DocumentsPage() {
           uploadedAt: new Date(),
           processingMethod
         }
-        setDocuments(prev => [newDoc, ...prev])
+        console.log('📝 Creando nuevo documento:', newDoc)
+        setDocuments(prev => {
+          const updatedDocs = [newDoc, ...prev]
+          console.log('📋 Documentos después de agregar:', updatedDocs)
+          return updatedDocs
+        })
         
         try {
           let result: { extractedData: ExtractedData, ocrData?: ExtractedData, gptData?: ExtractedData }
@@ -384,20 +417,29 @@ export default function DocumentsPage() {
             result = { extractedData: ocrResult.extractedData, ocrData: ocrResult.extractedData }
           }
 
-          setDocuments(prev => prev.map(doc =>
-            doc.id === newDoc.id
-              ? {
-                ...doc,
-                status: 'completed',
-                supplier: result.extractedData?.supplier?.name,
-                total: result.extractedData?.totals?.total,
-                items: result.extractedData?.items?.length,
-                extractedData: result.extractedData,
-                ocrData: result.ocrData,
-                gptData: result.gptData
-              }
-              : doc
-          ))
+          console.log('📊 Resultado del procesamiento:', result)
+          console.log('📄 Datos extraídos:', result.extractedData)
+          
+          setDocuments(prevDocuments => {
+            const updatedDocuments = prevDocuments.map(doc =>
+              doc.id === newDoc.id
+                ? {
+                  ...doc,
+                  status: 'completed' as const,
+                  supplier: result.extractedData?.supplier?.name,
+                  total: result.extractedData?.totals?.total,
+                  items: result.extractedData?.items?.length,
+                  extractedData: result.extractedData,
+                  ocrData: result.ocrData,
+                  gptData: result.gptData
+                }
+                : doc
+            )
+            
+            console.log('📋 Documento actualizado:', updatedDocuments.find(doc => doc.id === newDoc.id))
+            saveDocumentsToStorage(updatedDocuments)
+            return updatedDocuments
+          })
           
           setOcrProgress(prev => {
             const copy = { ...prev }
@@ -406,11 +448,15 @@ export default function DocumentsPage() {
           })
         } catch (error) {
           console.error('Error procesando documento:', error)
-          setDocuments(prev => prev.map(doc =>
-            doc.id === newDoc.id
-              ? { ...doc, status: 'error' as const }
-              : doc
-          ))
+          setDocuments(prev => {
+            const updatedDocuments = prev.map(doc =>
+              doc.id === newDoc.id
+                ? { ...doc, status: 'error' as const }
+                : doc
+            )
+            saveDocumentsToStorage(updatedDocuments)
+            return updatedDocuments
+          })
           setOcrProgress(prev => {
             const copy = { ...prev }
             delete copy[newDoc.id]
@@ -461,26 +507,7 @@ export default function DocumentsPage() {
     })
     .filter((v): v is { id: string; name: string; text: string } => Boolean(v))
 
-  // Derivar precios para vista rápida
-  const processingOcrPrices = Object.entries(ocrProgress)
-    .map(([docId, text]) => {
-      const doc = documents.find(d => d.id === docId)
-      if (!doc) return null
-      const parsed = extractDataFromText(text)
-      const prices = (parsed.items || [])
-        .map(it => it.totalPrice)
-        .filter((v): v is number => typeof v === 'number' && !Number.isNaN(v))
-      return { id: docId, name: doc.name, prices }
-    })
-    .filter((v): v is { id: string; name: string; prices: number[] } => Boolean(v))
 
-  const selectedOcrPrices = documents
-    .filter(doc => doc.status === 'completed' && doc.extractedData?.items && doc.extractedData.items.length > 0)
-    .map(doc => ({ 
-      id: doc.id, 
-      name: doc.name, 
-      prices: doc.extractedData?.items?.map(item => item.totalPrice).filter((p): p is number => typeof p === 'number') || []
-    }))
 
   return (
     <AdminLayout title="Gestión de Documentos">
@@ -671,12 +698,27 @@ export default function DocumentsPage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => setSelectedDocument(doc)}
+                        onClick={() => {
+                          setSelectedDocument(doc)
+                          setIsModalOpen(true)
+                        }}
                       >
                         <Eye className="h-4 w-4 mr-2" />
                         Ver Datos
                       </Button>
                     )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        if (confirm('¿Estás seguro de que quieres eliminar este documento?')) {
+                          deleteDocument(doc.id)
+                        }
+                      }}
+                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               ))}
@@ -713,70 +755,17 @@ export default function DocumentsPage() {
         </div>
       )}
 
-      {(processingOcrPrices.length > 0 || selectedOcrPrices.length > 0) && (
-        <div className="mt-6">
-          <h2 className="text-lg font-bold mb-2">Precios extraídos</h2>
-          {processingOcrPrices.map(({ id, name, prices }) => (
-            <div key={id} className="mb-3">
-              <div className="font-semibold text-sm text-blue-700 mb-1">Procesando: {name}</div>
-              <div className="bg-white border border-blue-200 rounded p-2 text-xs flex flex-wrap gap-2">
-                {prices.length > 0 ? prices.map((p, idx) => (
-                  <span key={idx} className="px-2 py-1 rounded border bg-blue-50 text-blue-700">
-                    {p.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
-                  </span>
-                )) : <span className="text-gray-500">Sin precios detectados todavía</span>}
-              </div>
-            </div>
-          ))}
-          {selectedOcrPrices.map(({ id, name, prices }) => (
-            <div key={id} className="mb-3">
-              <div className="font-semibold text-sm text-green-700 mb-1">{name}</div>
-              <div className="bg-white border border-green-200 rounded p-2 text-xs flex flex-wrap gap-2">
-                {prices.length > 0 ? prices.map((p, idx) => (
-                  <span key={idx} className="px-2 py-1 rounded border bg-green-50 text-green-700">
-                    {p.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
-                  </span>
-                )) : <span className="text-gray-500">Sin precios detectados</span>}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
-      {/* Visualización de datos extraídos */}
-      {selectedDocument && selectedDocument.extractedData && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span>Datos Extraídos: {selectedDocument.name}</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSelectedDocument(null)}
-              >
-                Cerrar
-              </Button>
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <InvoiceDataDisplay
-              data={selectedDocument.extractedData}
-              ocrData={selectedDocument.ocrData}
-              gptData={selectedDocument.gptData}
-            />
-            
-            {/* Integración con Holded */}
-            <div className="mt-6">
-              <HoldedIntegration
-                extractedData={selectedDocument.extractedData}
-                onSyncComplete={(result) => {
-                  console.log('Sincronización completada:', result);
-                }}
-              />
-            </div>
-          </CardContent>
-        </Card>
-      )}
+
+      {/* Modal de detalles del documento */}
+      <DocumentDetailsModal
+        document={selectedDocument}
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false)
+          setSelectedDocument(null)
+        }}
+      />
     </AdminLayout>
   )
 } 

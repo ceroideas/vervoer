@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Tesseract from 'tesseract.js';
+
+
 import OpenAI from 'openai';
 
 // Configurar OpenAI
@@ -21,10 +23,13 @@ interface ExtractedData {
     description?: string;
     quantity?: number;
     unitPrice?: number;
+    discount?: number; // Descuento en porcentaje o cantidad
+    discountType?: 'percentage' | 'amount'; // Tipo de descuento
     totalPrice?: number;
   }>;
   totals?: {
     subtotal?: number;
+    discount?: number; // Descuento total del documento
     tax?: number;
     total?: number;
   };
@@ -79,6 +84,20 @@ function extractDataFromOCRText(text: string): ExtractedData {
       item.quantity = parseFloat(quantityMatch[1].replace(',', '.'));
     }
 
+    // Detectar descuentos (% o €)
+    const discountMatch = line.match(/(?:descuento|dto\.?|discount)\s*:?\s*([+-]?\d+(?:[,.]\d+)?)\s*(%|€|euros?)?/i);
+    if (discountMatch) {
+      const discountValue = parseFloat(discountMatch[1].replace(',', '.'));
+      const discountUnit = discountMatch[2];
+      if (discountUnit === '%') {
+        item.discount = discountValue;
+        item.discountType = 'percentage';
+      } else {
+        item.discount = discountValue;
+        item.discountType = 'amount';
+      }
+    }
+
     // Extraer precio unitario
     const unitPriceMatch = line.match(/[€$]?\s*(\d+(?:[,.]\d+)?)\s*[€$]?/g);
     if (unitPriceMatch && unitPriceMatch.length >= 2) {
@@ -125,6 +144,12 @@ function extractDataFromOCRText(text: string): ExtractedData {
     extracted.totals!.subtotal = parseFloat(subtotalMatch[1].replace(',', '.'));
   }
 
+  // Extraer descuento total del documento
+  const discountMatch = text.match(/(?:DESCUENTO|DTOS?\.?)\s*(?:TOTAL|GENERAL)?\s*:?\s*[€$]?\s*(\d+(?:[,.]\d+)?)/i);
+  if (discountMatch) {
+    extracted.totals!.discount = parseFloat(discountMatch[1].replace(',', '.'));
+  }
+
   return extracted;
 }
 
@@ -147,12 +172,15 @@ Responde ÚNICAMENTE con un JSON válido:
       "reference": "Código de referencia",
       "description": "Descripción del producto",
       "quantity": número,
-      "unitPrice": número (precio unitario con descuentos),
-      "totalPrice": número (precio total de la línea)
+      "unitPrice": número (precio unitario sin descuentos),
+      "discount": número (descuento aplicado - porcentaje o cantidad),
+      "discountType": "percentage" o "amount" (tipo de descuento),
+      "totalPrice": número (precio total de la línea con descuentos aplicados)
     }
   ],
   "totals": {
     "subtotal": número (suma de importes, base imponible),
+    "discount": número (descuento total del documento si existe),
     "tax": número (IVA),
     "total": número (total final)
   }
@@ -162,13 +190,18 @@ INSTRUCCIONES:
 1. Busca proveedor cerca de "PROVEEDOR", "EMISOR", "VENDEDOR", "EMPRESA"
 2. Número de documento: "FACTURA Nº", "ALBARÁN Nº", etc.
 3. Fecha: DD/MM/YYYY, DD-MM-YYYY
-4. Productos: referencia, descripción, cantidad, precio unitario, importe
-5. Precios unitarios = PVP (con descuentos aplicados)
-6. Base imponible = suma de todos los importes
-7. Total = base imponible + IVA
-8. Si no hay dato, usa null o string vacío
-9. Números como números, no strings
-10. Maneja separadores decimales (comas y puntos)`;
+4. Productos: referencia, descripción, cantidad, precio unitario, descuento, importe
+5. Precios unitarios = precio SIN descuentos aplicados
+6. Descuentos pueden ser:
+   - Porcentaje: "10%", "15% dto", "descuento 20%"
+   - Cantidad: "5€ dto", "descuento 10€", "-5€"
+7. totalPrice = precio final CON descuentos aplicados
+8. Busca descuentos totales en "DESCUENTO TOTAL", "DTOS. TOTALES"
+9. Base imponible = suma de todos los importes
+10. Total = base imponible + IVA
+11. Si no hay dato, usa null o string vacío
+12. Números como números, no strings
+13. Maneja separadores decimales (comas y puntos)`;
 
   const response = await openai.chat.completions.create({
     model: "gpt-4o-mini",

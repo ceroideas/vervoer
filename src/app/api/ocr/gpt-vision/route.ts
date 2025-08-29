@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
 
+
+
 // Configurar OpenAI
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -91,12 +93,15 @@ Estructura del JSON esperado:
       "reference": "Código de referencia del producto",
       "description": "Descripción del producto",
       "quantity": número,
-      "unitPrice": número (precio unitario con descuentos aplicados),
-      "totalPrice": número (precio total de la línea)
+      "unitPrice": número (precio unitario sin descuentos),
+      "discount": número (descuento aplicado - porcentaje o cantidad),
+      "discountType": "percentage" o "amount" (tipo de descuento),
+      "totalPrice": número (precio total de la línea con descuentos aplicados)
     }
   ],
   "totals": {
     "subtotal": número (suma de todos los importes, base imponible),
+    "discount": número (descuento total del documento si existe),
     "tax": número (IVA),
     "total": número (total final)
   }
@@ -106,13 +111,18 @@ INSTRUCCIONES ESPECÍFICAS:
 1. Busca el nombre del proveedor cerca de palabras como "PROVEEDOR", "EMISOR", "VENDEDOR", "EMPRESA"
 2. El número de documento puede aparecer como "FACTURA Nº", "ALBARÁN Nº", etc.
 3. La fecha puede estar en formato DD/MM/YYYY, DD-MM-YYYY, o similar
-4. Para los productos, identifica líneas que contengan: referencia, descripción, cantidad, precio unitario, importe
-5. Los precios unitarios deben ser el PVP (precio con descuentos aplicados)
-6. La base imponible es la suma de todos los importes de productos
-7. El total es la base imponible + IVA
-8. Si algún dato no está disponible, usa null o string vacío
-9. Los números deben ser números, no strings
-10. Maneja correctamente los separadores decimales (comas y puntos)`;
+4. Para los productos, identifica líneas que contengan: referencia, descripción, cantidad, precio unitario, descuento, importe
+5. Los precios unitarios deben ser el precio SIN descuentos aplicados
+6. Los descuentos pueden aparecer como:
+   - Porcentaje: "10%", "15% dto", "descuento 20%"
+   - Cantidad: "5€ dto", "descuento 10€", "-5€"
+7. El totalPrice debe ser el precio final CON descuentos aplicados
+8. Busca descuentos totales del documento en secciones como "DESCUENTO TOTAL", "DTOS. TOTALES"
+9. La base imponible es la suma de todos los importes de productos
+10. El total es la base imponible + IVA
+11. Si algún dato no está disponible, usa null o string vacío
+12. Los números deben ser números, no strings
+13. Maneja correctamente los separadores decimales (comas y puntos)`;
 
     console.log('🤖 Enviando imagen a GPT-4o-mini...');
 

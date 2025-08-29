@@ -1,35 +1,45 @@
-RewriteEngine On
+# 🚀 Configuración Proxy - Vervoer
+# Para Plesk con Apache
 
-# Handle client-side routing
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^(.*)$ /index.html [L]
-
-# Handle Next.js static export routing
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^admin/(.*)$ /admin/index.html [L]
-
-# Handle other nested routes
-RewriteCond %{REQUEST_FILENAME} !-f
-RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^([^/]+)/(.*)$ /$1/index.html [L]
-
-# Security headers
-<IfModule mod_headers.c>
-    Header always set X-Content-Type-Options nosniff
-    Header always set X-Frame-Options DENY
-    Header always set X-XSS-Protection "1; mode=block"
+# Habilitar módulos necesarios
+<IfModule mod_proxy.c>
+    <IfModule mod_proxy_http.c>
+        
+        # Configurar proxy a la aplicación Next.js
+        ProxyPreserveHost On
+        ProxyPass / http://localhost:3000/
+        ProxyPassReverse / http://localhost:3000/
+        
+        # Headers para WebSocket
+        RewriteEngine On
+        RewriteCond %{HTTP:Upgrade} websocket [NC]
+        RewriteCond %{HTTP:Connection} upgrade [NC]
+        RewriteRule ^/?(.*) "ws://localhost:3000/$1" [P,L]
+        
+        # Headers de seguridad
+        Header always set X-Frame-Options "SAMEORIGIN"
+        Header always set X-XSS-Protection "1; mode=block"
+        Header always set X-Content-Type-Options "nosniff"
+        Header always set Referrer-Policy "no-referrer-when-downgrade"
+        
+        # Configuración de caché para archivos estáticos
+        <LocationMatch "^/_next/static/">
+            Header set Cache-Control "public, max-age=31536000, immutable"
+        </LocationMatch>
+        
+        <LocationMatch "\.(ico|css|js|gif|jpe?g|png|svg|woff|woff2|ttf|eot)$">
+            Header set Cache-Control "public, max-age=31536000"
+        </LocationMatch>
+        
+    </IfModule>
 </IfModule>
 
-# Cache static assets
-<IfModule mod_expires.c>
-    ExpiresActive on
-    ExpiresByType text/css "access plus 1 year"
-    ExpiresByType application/javascript "access plus 1 year"
-    ExpiresByType image/png "access plus 1 year"
-    ExpiresByType image/jpg "access plus 1 year"
-    ExpiresByType image/jpeg "access plus 1 year"
-    ExpiresByType image/gif "access plus 1 year"
-    ExpiresByType image/svg+xml "access plus 1 year"
-</IfModule> 
+# Si no tienes mod_proxy, redirigir a puerto 3000
+<IfModule !mod_proxy.c>
+    RewriteEngine On
+    RewriteRule ^(.*)$ http://localhost:3000/$1 [P,L]
+</IfModule>
+
+# Configuración de errores
+ErrorDocument 502 "La aplicación no está disponible. Por favor, verifica que esté ejecutándose en el puerto 3000."
+ErrorDocument 503 "La aplicación está en mantenimiento. Por favor, intenta más tarde." 

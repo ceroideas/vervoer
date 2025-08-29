@@ -1,0 +1,176 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+  VIEWER
+}
+
+enum DocumentStatus {
+  PENDING
+  PROCESSED
+  ERROR
+  SYNCED
+}
+
+enum DocumentType {
+  INVOICE
+  DELIVERY_NOTE
+  RECEIPT
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  role      UserRole @default(USER)
+  isActive  Boolean  @default(true)
+  documents Document[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+model Document {
+  id            String         @id @default(cuid())
+  filename      String
+  originalText  String         @db.Text
+  extractedData Json
+  documentType  DocumentType
+  status        DocumentStatus @default(PENDING)
+  
+  // Relación con proveedor
+  supplier      Supplier?      @relation(fields: [supplierId], references: [id])
+  supplierId    String?
+  
+  // Datos del documento
+  documentNumber String?
+  documentDate   DateTime?
+  
+  // Items del documento
+  items         DocumentItem[]
+  
+  // Totales
+  subtotal      Float          @default(0)
+  taxAmount     Float          @default(0)
+  totalAmount   Float          @default(0)
+  
+  // Integración con Holded
+  holdedSync    Boolean        @default(false)
+  holdedId      String?
+  holdedError   String?
+  
+  // Usuario que procesó el documento
+  processedBy   User           @relation(fields: [userId], references: [id])
+  userId        String
+  
+  // Metadatos
+  fileSize      Int?
+  fileType      String?
+  processingTime Int?          // en milisegundos
+  
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@map("documents")
+}
+
+model Supplier {
+  id          String     @id @default(cuid())
+  name        String
+  taxId       String?    @unique
+  address     String?
+  email       String?
+  phone       String?
+  
+  // Integración con Holded
+  holdedId    String?    @unique
+  holdedSync  Boolean    @default(false)
+  
+  // Relación con documentos
+  documents   Document[]
+  
+  // Metadatos
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@map("suppliers")
+}
+
+model DocumentItem {
+  id          String   @id @default(cuid())
+  
+  // Datos del item
+  reference   String?
+  description String
+  quantity    Float
+  unitPrice   Float
+  total       Float
+  
+  // Relación con documento
+  document    Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  documentId  String
+  
+  // Relación con producto (opcional)
+  product     Product? @relation(fields: [productId], references: [id])
+  productId   String?
+  
+  // Metadatos
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("document_items")
+}
+
+model Product {
+  id          String         @id @default(cuid())
+  sku         String         @unique
+  name        String
+  description String?
+  
+  // Precios
+  price       Float?
+  costPrice   Float?
+  
+  // Stock
+  stock       Int?           @default(0)
+  minStock    Int?           @default(0)
+  
+  // Integración con Holded
+  holdedId    String?        @unique
+  holdedSync  Boolean        @default(false)
+  
+  // Relación con items de documentos
+  items       DocumentItem[]
+  
+  // Metadatos
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@map("products")
+}
+
+// Tabla para sesiones de usuario (JWT tokens)
+model UserSession {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@map("user_sessions")
+}

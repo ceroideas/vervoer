@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { holdedClient } from '@/holded/client';
 
+
+
 export async function GET(req: NextRequest) {
   try {
     console.log('🧪 Probando conexión con Holded...');
@@ -17,9 +19,9 @@ export async function GET(req: NextRequest) {
     }
 
     // Obtener algunos datos de prueba
-    let contacts = [];
-    let invoices = [];
-    let products = [];
+    let contacts: any[] = [];
+    let invoices: any[] = [];
+    let products: any[] = [];
     
     try {
       contacts = await holdedClient.getContacts();

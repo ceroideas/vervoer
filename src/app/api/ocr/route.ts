@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Tesseract from 'tesseract.js';
 
+
+
 interface ExtractedData {
   documentType: 'invoice' | 'delivery_note';
   documentNumber?: string;
@@ -15,10 +17,13 @@ interface ExtractedData {
     description?: string;
     quantity?: number;
     unitPrice?: number;
+    discount?: number; // Descuento en porcentaje o cantidad
+    discountType?: 'percentage' | 'amount'; // Tipo de descuento
     totalPrice?: number;
   }>;
   totals?: {
     subtotal?: number;
+    discount?: number; // Descuento total del documento
     tax?: number;
     total?: number;
   };
@@ -73,6 +78,20 @@ function extractDataFromText(text: string): ExtractedData {
       item.quantity = parseFloat(quantityMatch[1].replace(',', '.'));
     }
 
+    // Detectar descuentos (% o €)
+    const discountMatch = line.match(/(?:descuento|dto\.?|discount)\s*:?\s*([+-]?\d+(?:[,.]\d+)?)\s*(%|€|euros?)?/i);
+    if (discountMatch) {
+      const discountValue = parseFloat(discountMatch[1].replace(',', '.'));
+      const discountUnit = discountMatch[2];
+      if (discountUnit === '%') {
+        item.discount = discountValue;
+        item.discountType = 'percentage';
+      } else {
+        item.discount = discountValue;
+        item.discountType = 'amount';
+      }
+    }
+
     // Extraer precio unitario
     const unitPriceMatch = line.match(/[€$]?\s*(\d+(?:[,.]\d+)?)\s*[€$]?/g);
     if (unitPriceMatch && unitPriceMatch.length >= 2) {
@@ -117,6 +136,12 @@ function extractDataFromText(text: string): ExtractedData {
   const subtotalMatch = text.match(/SUBTOTAL\s*:?\s*[€$]?\s*(\d+(?:[,.]\d+)?)/i);
   if (subtotalMatch) {
     extracted.totals!.subtotal = parseFloat(subtotalMatch[1].replace(',', '.'));
+  }
+
+  // Extraer descuento total del documento
+  const discountMatch = text.match(/(?:DESCUENTO|DTOS?\.?)\s*(?:TOTAL|GENERAL)?\s*:?\s*[€$]?\s*(\d+(?:[,.]\d+)?)/i);
+  if (discountMatch) {
+    extracted.totals!.discount = parseFloat(discountMatch[1].replace(',', '.'));
   }
 
   return extracted;

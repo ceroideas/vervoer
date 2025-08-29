@@ -34,15 +34,18 @@ export default function LoginPage() {
     }
   }
 
-  const handleDemoLogin = async (type: 'admin' | 'user') => {
-    const demoCredentials = type === 'admin' 
-      ? { email: 'admin@vervoer.com', password: 'admin123' }
-      : { email: 'user@vervoer.com', password: 'user123' }
+  const handleDemoLogin = async (type: 'admin' | 'user' | 'viewer') => {
+    const demoCredentials = {
+      admin: { email: 'admin@vervoer.com', password: 'admin123' },
+      user: { email: 'usuario@vervoer.com', password: 'usuario123' },
+      viewer: { email: 'viewer@vervoer.com', password: 'viewer123' }
+    }
     
-    setEmail(demoCredentials.email)
-    setPassword(demoCredentials.password)
+    const credentials = demoCredentials[type]
+    setEmail(credentials.email)
+    setPassword(credentials.password)
     
-    const success = await login(demoCredentials.email, demoCredentials.password)
+    const success = await login(credentials.email, credentials.password)
     if (success) {
       router.push('/admin')
     }
@@ -134,24 +137,30 @@ export default function LoginPage() {
             <div className="mt-6 space-y-3">
               <div className="text-center">
                 <p className="text-sm text-gray-600 mb-3">O prueba con una cuenta demo:</p>
-                <div className="flex space-x-2">
+                <div className="grid grid-cols-3 gap-2">
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handleDemoLogin('admin')}
                     disabled={isLoading}
-                    className="flex-1"
                   >
-                    Admin Demo
+                    Admin
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => handleDemoLogin('user')}
                     disabled={isLoading}
-                    className="flex-1"
                   >
-                    User Demo
+                    Usuario
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleDemoLogin('viewer')}
+                    disabled={isLoading}
+                  >
+                    Viewer
                   </Button>
                 </div>
               </div>
@@ -162,7 +171,8 @@ export default function LoginPage() {
               <h4 className="text-sm font-medium text-blue-900 mb-2">Credenciales de prueba:</h4>
               <div className="text-xs text-blue-700 space-y-1">
                 <p><strong>Admin:</strong> admin@vervoer.com / admin123</p>
-                <p><strong>Usuario:</strong> user@vervoer.com / user123</p>
+                <p><strong>Usuario:</strong> usuario@vervoer.com / usuario123</p>
+                <p><strong>Viewer:</strong> viewer@vervoer.com / viewer123</p>
               </div>
             </div>
           </CardContent>

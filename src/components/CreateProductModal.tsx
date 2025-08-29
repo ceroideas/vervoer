@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -10,24 +10,54 @@ import { Plus, Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 interface CreateProductModalProps {
-  onProductCreated?: () => void
+  onProductCreated?: () => void;
+  prefillData?: {
+    name?: string;
+    description?: string;
+    price?: number;
+    cost?: number;
+    sku?: string;
+    tax?: number;
+    stock?: number;
+    weight?: number;
+    barcode?: string;
+    tags?: string;
+  };
 }
 
-export function CreateProductModal({ onProductCreated }: CreateProductModalProps) {
+export function CreateProductModal({ onProductCreated, prefillData }: CreateProductModalProps) {
   const [open, setOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [formData, setFormData] = useState({
-    name: '',
-    description: '',
-    price: '',
-    cost: '',
-    sku: '',
-    tax: '0',
-    stock: '0',
-    weight: '0',
-    barcode: '',
-    tags: ''
+    name: prefillData?.name || '',
+    description: prefillData?.description || '',
+    price: prefillData?.price?.toString() || '',
+    cost: prefillData?.cost?.toString() || '',
+    sku: prefillData?.sku || '',
+    tax: prefillData?.tax?.toString() || '0',
+    stock: prefillData?.stock?.toString() || '0',
+    weight: prefillData?.weight?.toString() || '0',
+    barcode: prefillData?.barcode || '',
+    tags: prefillData?.tags || ''
   })
+
+  // Actualizar formulario cuando cambien los datos de pre-relleno
+  useEffect(() => {
+    if (prefillData) {
+      setFormData({
+        name: prefillData.name || '',
+        description: prefillData.description || '',
+        price: prefillData.price?.toString() || '',
+        cost: prefillData.cost?.toString() || '',
+        sku: prefillData.sku || '',
+        tax: prefillData.tax?.toString() || '0',
+        stock: prefillData.stock?.toString() || '0',
+        weight: prefillData.weight?.toString() || '0',
+        barcode: prefillData.barcode || '',
+        tags: prefillData.tags || ''
+      })
+    }
+  }, [prefillData])
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({

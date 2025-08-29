@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { holdedClient } from '@/holded/client';
 
+
+
 export async function POST(req: NextRequest) {
   try {
     console.log('🔄 Iniciando sincronización con Holded...');

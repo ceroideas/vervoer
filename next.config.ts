@@ -1,8 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // Comentado para desarrollo - descomenta para build estático
-  // output: 'export',
+  // Configuración básica
   trailingSlash: true,
   images: {
     unoptimized: true
@@ -10,6 +9,7 @@ const nextConfig: NextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  distDir: '.next',
 };
 
 export default nextConfig;

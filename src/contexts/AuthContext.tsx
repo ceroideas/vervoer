@@ -1,86 +1,91 @@
 "use client"
 import React, { createContext, useContext, useState, useEffect } from 'react'
-
-interface User {
-  id: string
-  name: string
-  email: string
-  role: 'admin' | 'user'
-}
+import { UserWithoutPassword } from '@/types/database'
 
 interface AuthContextType {
-  user: User | null
+  user: UserWithoutPassword | null
   login: (email: string, password: string) => Promise<boolean>
-  logout: () => void
+  logout: () => Promise<void>
   isLoading: boolean
+  checkAuth: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-// Datos de usuarios simulados
-const mockUsers = [
-  {
-    id: '1',
-    name: 'Administrador',
-    email: 'admin@vervoer.com',
-    password: 'admin123',
-    role: 'admin' as const
-  },
-  {
-    id: '2',
-    name: 'Usuario Demo',
-    email: 'user@vervoer.com',
-    password: 'user123',
-    role: 'user' as const
-  }
-]
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null)
+  const [user, setUser] = useState<UserWithoutPassword | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    // Verificar si hay un usuario guardado en localStorage
-    const savedUser = localStorage.getItem('vervoer_user')
-    if (savedUser) {
-      setUser(JSON.parse(savedUser))
+  // Verificar autenticación al cargar
+  const checkAuth = async () => {
+    try {
+      const response = await fetch('/api/auth/profile', {
+        credentials: 'include'
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setUser(data.data.user)
+      } else {
+        setUser(null)
+      }
+    } catch (error) {
+      console.error('Error verificando autenticación:', error)
+      setUser(null)
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
+  }
+
+  useEffect(() => {
+    checkAuth()
   }, [])
 
   const login = async (email: string, password: string): Promise<boolean> => {
     setIsLoading(true)
     
-    // Simular delay de red
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    const foundUser = mockUsers.find(u => u.email === email && u.password === password)
-    
-    if (foundUser) {
-      const userData: User = {
-        id: foundUser.id,
-        name: foundUser.name,
-        email: foundUser.email,
-        role: foundUser.role
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ email, password })
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        setUser(data.data.user)
+        return true
+      } else {
+        console.error('Error de login:', data.error)
+        return false
       }
-      
-      setUser(userData)
-      localStorage.setItem('vervoer_user', JSON.stringify(userData))
+    } catch (error) {
+      console.error('Error en login:', error)
+      return false
+    } finally {
       setIsLoading(false)
-      return true
     }
-    
-    setIsLoading(false)
-    return false
   }
 
-  const logout = () => {
-    setUser(null)
-    localStorage.removeItem('vervoer_user')
+  const logout = async () => {
+    try {
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include'
+      })
+    } catch (error) {
+      console.error('Error en logout:', error)
+    } finally {
+      setUser(null)
+    }
   }
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, login, logout, isLoading, checkAuth }}>
       {children}
     </AuthContext.Provider>
   )

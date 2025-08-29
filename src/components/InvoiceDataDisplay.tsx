@@ -14,28 +14,7 @@ import {
   Info
 } from 'lucide-react'
 
-interface ExtractedData {
-  documentType: 'invoice' | 'delivery_note';
-  documentNumber?: string;
-  date?: string;
-  supplier?: {
-    name?: string;
-    address?: string;
-    taxId?: string;
-  };
-  items?: Array<{
-    reference?: string;
-    description?: string;
-    quantity?: number;
-    unitPrice?: number;
-    totalPrice?: number;
-  }>;
-  totals?: {
-    subtotal?: number;
-    tax?: number;
-    total?: number;
-  };
-}
+import { ExtractedData } from '@/types/invoice'
 
 interface InvoiceDataDisplayProps {
   data: ExtractedData;
@@ -45,6 +24,9 @@ interface InvoiceDataDisplayProps {
 }
 
 export function InvoiceDataDisplay({ data, ocrData, gptData, isLoading }: InvoiceDataDisplayProps) {
+  // Debug logging
+  console.log('🔍 InvoiceDataDisplay recibió:', { data, ocrData, gptData, isLoading });
+  
   if (isLoading) {
     return (
       <div className="space-y-4">
@@ -178,6 +160,7 @@ export function InvoiceDataDisplay({ data, ocrData, gptData, isLoading }: Invoic
                     <th className="text-left p-2 font-medium">Descripción</th>
                     <th className="text-right p-2 font-medium">Cantidad</th>
                     <th className="text-right p-2 font-medium">Precio Unit.</th>
+                    <th className="text-right p-2 font-medium">Descuento</th>
                     <th className="text-right p-2 font-medium">Total</th>
                   </tr>
                 </thead>
@@ -195,6 +178,13 @@ export function InvoiceDataDisplay({ data, ocrData, gptData, isLoading }: Invoic
                       </td>
                       <td className="p-2 text-right font-mono">
                         {formatCurrency(item.unitPrice)}
+                      </td>
+                      <td className="p-2 text-right font-mono">
+                        {item.discount ? (
+                          <span className="text-red-600">
+                            {item.discountType === 'percentage' ? `${item.discount}%` : formatCurrency(item.discount)}
+                          </span>
+                        ) : '-'}
                       </td>
                       <td className="p-2 text-right font-mono font-medium">
                         {formatCurrency(item.totalPrice)}
@@ -224,6 +214,15 @@ export function InvoiceDataDisplay({ data, ocrData, gptData, isLoading }: Invoic
                   <span className="font-medium">Base Imponible:</span>
                   <span className="font-mono text-lg">
                     {formatCurrency(data.totals.subtotal)}
+                  </span>
+                </div>
+              )}
+              
+              {data.totals.discount !== undefined && data.totals.discount > 0 && (
+                <div className="flex justify-between items-center">
+                  <span className="font-medium text-red-600">Descuento:</span>
+                  <span className="font-mono text-red-600">
+                    -{formatCurrency(data.totals.discount)}
                   </span>
                 </div>
               )}
