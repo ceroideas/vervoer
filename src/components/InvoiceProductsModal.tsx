@@ -161,7 +161,7 @@ export function InvoiceProductsModal({ extractedData, documentName }: InvoicePro
                               tags: extractedData.supplier?.name || ''
                             }}
                             onProductCreated={() => {
-                              console.log(`Producto ${index + 1} creado exitosamente`);
+                              // Producto creado exitosamente
                             }}
                           />
                         </div>
@@ -245,7 +245,7 @@ export function InvoiceProductsModal({ extractedData, documentName }: InvoicePro
               <Button
                 onClick={() => {
                   // Aquí podrías implementar una función para crear todos los productos de una vez
-                  console.log('Crear todos los productos');
+                  // Crear todos los productos
                 }}
                 className="flex items-center gap-2"
               >

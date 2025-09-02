@@ -174,3 +174,69 @@ model UserSession {
 
   @@map("user_sessions")
 }
+
+// Sistema de alertas de precios
+enum AlertType {
+  PRICE_INCREASE
+  PRICE_DECREASE
+  DISCOUNT_ANOMALY
+  NORMAL
+}
+
+enum AlertSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+model PriceVariation {
+  id                    String        @id @default(cuid())
+  productId             String
+  productName           String
+  productSku            String?
+  oldPrice              Float
+  newPrice              Float
+  variationPercentage   Float
+  variationAmount       Float
+  documentNumber        String
+  documentDate          DateTime
+  supplierName          String
+  alertType             AlertType
+  severity              AlertSeverity
+  isProcessed           Boolean       @default(false)
+  notes                 String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  @@map("price_variations")
+}
+
+model ProductPriceHistory {
+  id            String   @id @default(cuid())
+  productId     String
+  price         Float
+  cost          Float
+  documentNumber String
+  documentDate  DateTime
+  supplierName  String
+  quantity      Float
+  totalAmount   Float
+  createdAt     DateTime @default(now())
+
+  @@map("product_price_history")
+}
+
+model PriceAlertConfig {
+  id                            String  @id @default(cuid())
+  maxPriceIncreasePercentage    Float   @default(10.0) // 10% por defecto
+  minDiscountPercentage         Float   @default(15.0) // 15% por defecto
+  maxDiscountPercentage         Float   @default(60.0) // 60% por defecto
+  criticalPriceIncreasePercentage Float @default(25.0) // 25% por defecto
+  enableAutomaticUpdates        Boolean @default(false)
+  enablePriceHistory            Boolean @default(true)
+  createdAt                     DateTime @default(now())
+  updatedAt                     DateTime @updatedAt
+
+  @@map("price_alert_config")
+}

@@ -5,11 +5,11 @@ import { holdedClient } from '@/holded/client';
 
 export async function GET(req: NextRequest) {
   try {
-    console.log('📦 Obteniendo productos de Holded...');
+    // Obteniendo productos de Holded
     
     const products = await holdedClient.getProducts();
     
-    console.log(`✅ Productos obtenidos: ${products.length}`);
+          // Productos obtenidos
     
     return NextResponse.json({
       success: true,
@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   try {
-    console.log('📦 Creando nuevo producto en Holded...');
+          // Creando nuevo producto en Holded
     
     const body = await req.json();
     const { name, description, price, cost, sku, category } = body;
@@ -63,11 +63,11 @@ export async function POST(req: NextRequest) {
       stock: 0, // Stock inicial
     };
 
-    console.log('📊 Datos del producto a crear:', JSON.stringify(productData, null, 2));
+          // Datos del producto a crear
 
     const newProduct = await holdedClient.createProduct(productData);
     
-    console.log(`✅ Producto creado en Holded: ${newProduct.name} (ID: ${newProduct.id})`);
+          // Producto creado en Holded
     
     return NextResponse.json({
       success: true,

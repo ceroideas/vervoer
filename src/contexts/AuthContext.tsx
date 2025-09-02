@@ -1,5 +1,6 @@
 "use client"
 import React, { createContext, useContext, useState, useEffect } from 'react'
+import { useSession, signIn, signOut } from 'next-auth/react'
 import { UserWithoutPassword } from '@/types/database'
 
 interface AuthContextType {
@@ -13,58 +14,54 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const { data: session, status } = useSession()
   const [user, setUser] = useState<UserWithoutPassword | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   // Verificar autenticación al cargar
   const checkAuth = async () => {
-    try {
-      const response = await fetch('/api/auth/profile', {
-        credentials: 'include'
+    if (status === 'loading') return
+    
+    if (session?.user) {
+      // Convertir la sesión de NextAuth al formato que espera la app
+      setUser({
+        id: session.user.id,
+        name: session.user.name,
+        email: session.user.email,
+        role: session.user.role as 'ADMIN' | 'USER' | 'VIEWER',
+        isActive: true,
+        createdAt: new Date(),
+        updatedAt: new Date()
       })
-
-      if (response.ok) {
-        const data = await response.json()
-        setUser(data.data.user)
-      } else {
-        setUser(null)
-      }
-    } catch (error) {
-      console.error('Error verificando autenticación:', error)
+    } else {
       setUser(null)
-    } finally {
-      setIsLoading(false)
     }
+    
+    setIsLoading(false)
   }
 
   useEffect(() => {
     checkAuth()
-  }, [])
+  }, [session, status])
 
   const login = async (email: string, password: string): Promise<boolean> => {
     setIsLoading(true)
     
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
-        body: JSON.stringify({ email, password })
+      const result = await signIn('credentials', {
+        email,
+        password,
+        redirect: false
       })
 
-      const data = await response.json()
-
-      if (data.success) {
-        setUser(data.data.user)
-        return true
-      } else {
-        console.error('Error de login:', data.error)
+      if (result?.error) {
+        console.error('❌ Error de login:', result.error)
         return false
       }
+
+      return true
     } catch (error) {
-      console.error('Error en login:', error)
+      console.error('❌ Error en login:', error)
       return false
     } finally {
       setIsLoading(false)
@@ -73,14 +70,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = async () => {
     try {
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include'
-      })
-    } catch (error) {
-      console.error('Error en logout:', error)
-    } finally {
+      await signOut({ redirect: false })
       setUser(null)
+    } catch (error) {
+      console.error('❌ Error en logout:', error)
     }
   }
 

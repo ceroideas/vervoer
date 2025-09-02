@@ -13,22 +13,32 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
   const router = useRouter()
 
   useEffect(() => {
+    console.log('🔍 ProtectedRoute Debug:', {
+      isLoading,
+      user: user ? { id: user.id, name: user.name, role: user.role } : null,
+      requiredRole
+    })
+
     if (!isLoading) {
       if (!user) {
+        console.log('🚫 No hay usuario, redirigiendo a login')
         router.push('/login')
         return
       }
 
       if (requiredRole && user.role !== requiredRole) {
-        // Si se requiere un rol específico y el usuario no lo tiene
+        console.log('🚫 Rol insuficiente, redirigiendo a admin')
         router.push('/admin')
         return
       }
+
+      console.log('✅ Usuario autenticado correctamente')
     }
   }, [user, isLoading, router, requiredRole])
 
   // Mostrar loading mientras se verifica la autenticación
   if (isLoading) {
+    console.log('⏳ Mostrando loading...')
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -41,13 +51,16 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
 
   // Si no hay usuario, no renderizar nada (se redirigirá)
   if (!user) {
+    console.log('🚫 No hay usuario, no renderizando contenido')
     return null
   }
 
   // Si se requiere un rol específico y el usuario no lo tiene, no renderizar nada
   if (requiredRole && user.role !== requiredRole) {
+    console.log('🚫 Rol insuficiente, no renderizando contenido')
     return null
   }
 
+  console.log('✅ Renderizando contenido protegido')
   return <>{children}</>
 }

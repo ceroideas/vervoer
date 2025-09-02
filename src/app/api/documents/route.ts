@@ -1,27 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { AuthService } from '@/lib/auth'
+import { getServerSession } from 'next-auth'
 import { CreateDocumentData, DocumentFilters } from '@/types/database'
 
 // GET - Obtener lista de documentos
 export async function GET(req: NextRequest) {
   try {
-    // Obtener token y usuario
-    const authHeader = req.headers.get('authorization')
-    const token = authHeader?.replace('Bearer ', '') || req.cookies.get('auth-token')?.value
-
-    if (!token) {
+    // Verificar autenticación usando NextAuth
+    const session = await getServerSession()
+    if (!session?.user) {
       return NextResponse.json({
         success: false,
         error: 'No autorizado'
-      }, { status: 401 })
-    }
-
-    const user = await AuthService.getCurrentUser(token)
-    if (!user) {
-      return NextResponse.json({
-        success: false,
-        error: 'Token inválido'
       }, { status: 401 })
     }
 
@@ -37,7 +27,9 @@ export async function GET(req: NextRequest) {
     const dateTo = searchParams.get('dateTo')
 
     // Construir filtros
-    const where: any = {}
+    const where: any = {
+      userId: session.user.id // Solo documentos del usuario autenticado
+    }
 
     if (status) where.status = status
     if (documentType) where.documentType = documentType
@@ -104,26 +96,17 @@ export async function GET(req: NextRequest) {
 // POST - Crear nuevo documento
 export async function POST(req: NextRequest) {
   try {
-    // Obtener token y usuario
-    const authHeader = req.headers.get('authorization')
-    const token = authHeader?.replace('Bearer ', '') || req.cookies.get('auth-token')?.value
-
-    if (!token) {
+    // Verificar autenticación usando NextAuth
+    const session = await getServerSession()
+    if (!session?.user) {
       return NextResponse.json({
         success: false,
         error: 'No autorizado'
       }, { status: 401 })
     }
 
-    const user = await AuthService.getCurrentUser(token)
-    if (!user) {
-      return NextResponse.json({
-        success: false,
-        error: 'Token inválido'
-      }, { status: 401 })
-    }
-
     const body: CreateDocumentData = await req.json()
+    
     const { filename, originalText, extractedData, documentType, fileSize, fileType, processingTime } = body
 
     // Validar datos requeridos
@@ -167,13 +150,13 @@ export async function POST(req: NextRequest) {
         originalText,
         extractedData,
         documentType,
-        userId: user.id,
+        userId: session.user.id,
         supplierId,
         documentNumber: extractedData.documentNumber,
         documentDate: extractedData.date ? new Date(extractedData.date) : null,
-        subtotal: extractedData.totals.subtotal,
-        taxAmount: extractedData.totals.tax,
-        totalAmount: extractedData.totals.total,
+        subtotal: extractedData.totals.subtotal || 0,
+        taxAmount: extractedData.totals.tax || 0,
+        totalAmount: extractedData.totals.total || 0,
         fileSize,
         fileType,
         processingTime,
@@ -195,11 +178,11 @@ export async function POST(req: NextRequest) {
     // Crear items del documento
     if (extractedData.items && extractedData.items.length > 0) {
       const itemsData = extractedData.items.map(item => ({
-        reference: item.reference,
-        description: item.description,
-        quantity: item.quantity,
-        unitPrice: item.unitPrice,
-        total: item.total,
+        reference: item.reference || '',
+        description: item.description || '',
+        quantity: item.quantity || 1,
+        unitPrice: item.unitPrice || 0,
+        total: item.total || 0,
         documentId: document.id
       }))
 

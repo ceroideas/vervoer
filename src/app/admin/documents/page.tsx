@@ -3,7 +3,7 @@ import { AdminLayout } from '@/components/admin/AdminLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { 
   Upload, 
   FileText, 
@@ -23,6 +23,8 @@ import { HoldedProductsSummary } from '@/components/HoldedProductsSummary'
 import { CreateProductModal } from '@/components/CreateProductModal'
 import { InvoiceProductsModal } from '@/components/InvoiceProductsModal'
 import { DocumentDetailsModal } from '@/components/DocumentDetailsModal'
+import { useAuth } from '@/contexts/AuthContext'
+import { DocumentWithRelations } from '@/types/database'
 
 // Importación dinámica de pdfjs para evitar problemas de SSR
 let pdfjsLib: any = null;
@@ -267,129 +269,129 @@ async function ocrPdfFile(file: File): Promise<{ text: string, extractedData: Ex
 }
 
 export default function DocumentsPage() {
-  const [documents, setDocuments] = useState<Document[]>([])
+  const { user } = useAuth()
+  const [documents, setDocuments] = useState<DocumentWithRelations[]>([])
   const [isUploading, setIsUploading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [ocrProgress, setOcrProgress] = useState<{ [docId: string]: string }>({})
   const [processingMethod, setProcessingMethod] = useState<'ocr' | 'gpt-vision'>('gpt-vision')
-  const [selectedDocument, setSelectedDocument] = useState<Document | null>(null)
+  const [selectedDocument, setSelectedDocument] = useState<DocumentWithRelations | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-  // Funciones para localStorage
-  const saveDocumentsToStorage = (docs: Document[]) => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('vervoer_documents', JSON.stringify(docs))
-    }
-  }
-
-  const loadDocumentsFromStorage = (): Document[] => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('vervoer_documents')
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored)
-          // Convertir las fechas de string a Date
-          return parsed.map((doc: any) => ({
-            ...doc,
-            uploadedAt: new Date(doc.uploadedAt)
-          }))
-        } catch (error) {
-          console.error('Error parsing stored documents:', error)
-          return []
+  // Cargar documentos desde la base de datos
+  const loadDocumentsFromDatabase = async () => {
+    if (!user) return
+    
+    try {
+      setIsLoading(true)
+      const response = await fetch('/api/documents', {
+        credentials: 'include'
+      })
+      
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success) {
+          setDocuments(data.data.documents)
+        } else {
+          console.error('Error cargando documentos:', data.error)
         }
+      } else {
+        console.error('Error en la respuesta:', response.statusText)
       }
+    } catch (error) {
+      console.error('Error cargando documentos:', error)
+    } finally {
+      setIsLoading(false)
     }
-    return []
   }
 
-  const deleteDocument = (documentId: string) => {
-    const updatedDocuments = documents.filter(doc => doc.id !== documentId)
-    setDocuments(updatedDocuments)
-    saveDocumentsToStorage(updatedDocuments)
+  // Eliminar documento de la base de datos
+  const deleteDocument = async (documentId: string) => {
+    try {
+      const response = await fetch(`/api/documents/${documentId}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      })
+      
+      if (response.ok) {
+        // Recargar documentos después de eliminar
+        await loadDocumentsFromDatabase()
+      } else {
+        console.error('Error eliminando documento:', response.statusText)
+      }
+    } catch (error) {
+      console.error('Error eliminando documento:', error)
+    }
   }
 
   // Cargar documentos al montar el componente
   useEffect(() => {
-    const storedDocuments = loadDocumentsFromStorage()
-    setDocuments(storedDocuments)
-  }, [])
+    if (user) {
+      loadDocumentsFromDatabase()
+    }
+  }, [user])
 
   const filteredDocuments = documents.filter(doc => {
-    const matchesSearch = doc.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      doc.supplier?.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesSearch = doc.filename.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      doc.supplier?.name?.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === 'all' || doc.status === statusFilter
     return matchesSearch && matchesStatus
   })
 
-  // Función para procesar con GPT-4o mini
+  // Función para procesar con GPT-4o mini y guardar en base de datos
   const processWithGPT4Vision = async (file: File): Promise<{ extractedData: ExtractedData, ocrData?: ExtractedData, gptData?: ExtractedData }> => {
     const formData = new FormData()
     formData.append('file', file)
 
-    const response = await fetch('/api/ocr/gpt-vision', {
+    const response = await fetch('/api/ocr/process', {
       method: 'POST',
-      body: formData
+      body: formData,
+      credentials: 'include'
     })
 
     if (!response.ok) {
-      throw new Error(`Error en GPT-4o mini: ${response.statusText}`)
+      throw new Error(`Error en procesamiento: ${response.statusText}`)
     }
 
     const result = await response.json()
-    console.log('📊 Respuesta del API GPT-4o mini:', result)
     
-    if (!result.extractedData) {
-      console.error('❌ No se encontraron datos extraídos en la respuesta:', result)
-      throw new Error('No se pudieron extraer datos del documento')
+    if (!result.success) {
+      throw new Error(result.error || 'Error procesando documento')
     }
     
     return {
-      extractedData: result.extractedData,
-      gptData: result.extractedData
+      extractedData: result.data.extractedData,
+      gptData: result.data.extractedData
     }
   }
 
-
-
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
-    if (!files || files.length === 0) return
+    if (!files || files.length === 0 || !user) return
+    
     setIsUploading(true)
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i]
-        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
-        const newDoc: Document = {
-          id: Date.now().toString() + i,
-          name: file.name,
-          type: file.name.toLowerCase().includes('factura') ? 'invoice' : 'delivery_note',
-          status: 'processing',
-          uploadedAt: new Date(),
-          processingMethod
-        }
-        console.log('📝 Creando nuevo documento:', newDoc)
-        setDocuments(prev => {
-          const updatedDocs = [newDoc, ...prev]
-          console.log('📋 Documentos después de agregar:', updatedDocs)
-          return updatedDocs
-        })
         
         try {
-          let result: { extractedData: ExtractedData, ocrData?: ExtractedData, gptData?: ExtractedData }
-          
           if (processingMethod === 'gpt-vision') {
-            // Procesar solo con GPT-4o mini
-            result = await processWithGPT4Vision(file)
+            // Procesar con GPT-4o mini y guardar en base de datos
+            const result = await processWithGPT4Vision(file)
           } else {
-            // Procesar solo con OCR tradicional
-            let ocrResult
+            // Procesar solo con OCR tradicional en el cliente
+            
+            const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
+            let ocrText = ''
+            
             if (isPdf) {
               const pdfLib = await initPdfJs();
               if (!pdfLib) {
                 throw new Error('PDF.js no está disponible');
               }
-              let fullText = ''
               const arrayBuffer = await file.arrayBuffer()
               const pdf = await pdfLib.getDocument({ data: arrayBuffer }).promise
               for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
@@ -404,64 +406,58 @@ export default function DocumentsPage() {
                 const dataUrl = canvas.toDataURL('image/png')
                 const worker = await getOcrWorker()
                 const { data: { text } } = await worker.recognize(dataUrl)
-                fullText += `\n--- Página ${pageNum} ---\n` + text
-                setOcrProgress(prev => ({ ...prev, [newDoc.id]: fullText }))
+                ocrText += `\n--- Página ${pageNum} ---\n` + text
               }
-              ocrResult = { text: fullText, extractedData: extractDataFromText(fullText) }
             } else {
               const worker = await getOcrWorker()
               const { data: { text } } = await worker.recognize(file)
-              setOcrProgress(prev => ({ ...prev, [newDoc.id]: text }))
-              ocrResult = { text, extractedData: extractDataFromText(text) }
+              ocrText = text
             }
-            result = { extractedData: ocrResult.extractedData, ocrData: ocrResult.extractedData }
-          }
-
-          console.log('📊 Resultado del procesamiento:', result)
-          console.log('📄 Datos extraídos:', result.extractedData)
-          
-          setDocuments(prevDocuments => {
-            const updatedDocuments = prevDocuments.map(doc =>
-              doc.id === newDoc.id
-                ? {
-                  ...doc,
-                  status: 'completed' as const,
-                  supplier: result.extractedData?.supplier?.name,
-                  total: result.extractedData?.totals?.total,
-                  items: result.extractedData?.items?.length,
-                  extractedData: result.extractedData,
-                  ocrData: result.ocrData,
-                  gptData: result.gptData
-                }
-                : doc
-            )
             
-            console.log('📋 Documento actualizado:', updatedDocuments.find(doc => doc.id === newDoc.id))
-            saveDocumentsToStorage(updatedDocuments)
-            return updatedDocuments
-          })
+            // Extraer datos del texto OCR
+            const extractedData = extractDataFromText(ocrText)
+            
+            // Guardar en base de datos usando la API
+            const formData = new FormData()
+            formData.append('file', file)
+            formData.append('ocrText', ocrText)
+            formData.append('extractedData', JSON.stringify(extractedData))
+            
+            const response = await fetch('/api/documents', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              credentials: 'include',
+              body: JSON.stringify({
+                filename: file.name,
+                originalText: ocrText,
+                extractedData: extractedData,
+                documentType: file.name.toLowerCase().includes('factura') ? 'INVOICE' : 'DELIVERY_NOTE',
+                fileSize: file.size,
+                fileType: file.type
+              })
+            })
+            
+            if (!response.ok) {
+              throw new Error(`Error guardando documento: ${response.statusText}`)
+            }
+            
+            const result = await response.json()
+          }
           
-          setOcrProgress(prev => {
-            const copy = { ...prev }
-            delete copy[newDoc.id]
-            return copy
-          })
+          // Recargar documentos después de procesar
+          await loadDocumentsFromDatabase()
+          
+          // Resetear el input de archivo
+          if (fileInputRef.current) {
+            fileInputRef.current.value = ''
+          }
+          
         } catch (error) {
           console.error('Error procesando documento:', error)
-          setDocuments(prev => {
-            const updatedDocuments = prev.map(doc =>
-              doc.id === newDoc.id
-                ? { ...doc, status: 'error' as const }
-                : doc
-            )
-            saveDocumentsToStorage(updatedDocuments)
-            return updatedDocuments
-          })
-          setOcrProgress(prev => {
-            const copy = { ...prev }
-            delete copy[newDoc.id]
-            return copy
-          })
+          // Mostrar error al usuario
+          alert(`Error procesando ${file.name}: ${error instanceof Error ? error.message : 'Error desconocido'}`)
         }
       }
     } finally {
@@ -469,45 +465,49 @@ export default function DocumentsPage() {
     }
   }
 
-  const getStatusIcon = (status: Document['status']) => {
+  const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'pending':
+      case 'PENDING':
         return <Clock className="h-4 w-4 text-yellow-500" />
-      case 'processing':
+      case 'PROCESSING':
         return <Clock className="h-4 w-4 text-blue-500" />
-      case 'completed':
+      case 'PROCESSED':
         return <CheckCircle className="h-4 w-4 text-green-500" />
-      case 'error':
+      case 'ERROR':
         return <AlertTriangle className="h-4 w-4 text-red-500" />
+      default:
+        return <Clock className="h-4 w-4 text-gray-500" />
     }
   }
-  const getStatusText = (status: Document['status']) => {
+
+  const getStatusText = (status: string) => {
     switch (status) {
-      case 'pending':
+      case 'PENDING':
         return 'Pendiente'
-      case 'processing':
+      case 'PROCESSING':
         return 'Procesando'
-      case 'completed':
+      case 'PROCESSED':
         return 'Completado'
-      case 'error':
+      case 'ERROR':
         return 'Error'
+      default:
+        return 'Desconocido'
     }
   }
-  const getDocumentTypeText = (type: Document['type']) => {
-    return type === 'invoice' ? 'Factura' : 'Albarán'
+
+  const getDocumentTypeText = (type: string) => {
+    return type === 'INVOICE' ? 'Factura' : 'Albarán'
   }
 
-  const selectedOcrTexts = documents
-    .filter(doc => doc.status === 'completed' && doc.ocrText)
-    .map(doc => ({ id: doc.id, name: doc.name, text: doc.ocrText }))
-  const processingOcrTexts = Object.entries(ocrProgress)
-    .map(([docId, text]) => {
-      const doc = documents.find(d => d.id === docId)
-      return doc ? { id: docId, name: doc.name, text } : null
-    })
-    .filter((v): v is { id: string; name: string; text: string } => Boolean(v))
-
-
+  if (!user) {
+    return (
+      <AdminLayout title="Gestión de Documentos">
+        <div className="flex items-center justify-center h-64">
+          <p className="text-muted-foreground">Debes iniciar sesión para ver los documentos</p>
+        </div>
+      </AdminLayout>
+    )
+  }
 
   return (
     <AdminLayout title="Gestión de Documentos">
@@ -530,7 +530,7 @@ export default function DocumentsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-yellow-600">
-                {documents.filter(d => d.status === 'pending').length}
+                {documents.filter(d => d.status === 'PENDING').length}
               </div>
             </CardContent>
           </Card>
@@ -541,7 +541,7 @@ export default function DocumentsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-blue-600">
-                {documents.filter(d => d.status === 'processing').length}
+                {documents.filter(d => d.status === 'PROCESSING').length}
               </div>
             </CardContent>
           </Card>
@@ -552,7 +552,7 @@ export default function DocumentsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                {documents.filter(d => d.status === 'completed').length}
+                {documents.filter(d => d.status === 'PROCESSED').length}
           </div>
             </CardContent>
           </Card>
@@ -601,6 +601,7 @@ export default function DocumentsPage() {
 
             <div className="flex items-center gap-4">
               <Input
+                ref={fileInputRef}
                 type="file"
                 multiple
                 accept=".pdf,.jpg,.jpeg,.png"
@@ -642,10 +643,10 @@ export default function DocumentsPage() {
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">Todos los estados</option>
-                <option value="pending">Pendientes</option>
-                <option value="processing">Procesando</option>
-                <option value="completed">Completados</option>
-                <option value="error">Errores</option>
+                <option value="PENDING">Pendientes</option>
+                <option value="PROCESSING">Procesando</option>
+                <option value="PROCESSED">Completados</option>
+                <option value="ERROR">Errores</option>
               </select>
               </div>
             </CardContent>
@@ -659,70 +660,75 @@ export default function DocumentsPage() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-              {filteredDocuments.map((doc) => (
-                <div key={doc.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      {getStatusIcon(doc.status)}
-                      <span className="text-sm font-medium">{getStatusText(doc.status)}</span>
-                    </div>
-                    <div>
-                      <p className="font-medium">{doc.name}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {getDocumentTypeText(doc.type)} • {doc.uploadedAt.toLocaleDateString()}
-                        {doc.processingMethod && (
-                          <span className="ml-2">
-                            • {doc.processingMethod === 'ocr' ? 'OCR' : 
-                               doc.processingMethod === 'gpt-vision' ? 'GPT-4o mini' : 'Híbrido'}
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="text-right">
-                      {doc.supplier && (
-                        <p className="text-sm font-medium">{doc.supplier}</p>
-                      )}
-                      {doc.total && (
+              {isLoading ? (
+                <div className="flex items-center justify-center h-32">
+                  <p className="text-muted-foreground">Cargando documentos...</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                {filteredDocuments.map((doc) => (
+                  <div key={doc.id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        {getStatusIcon(doc.status)}
+                        <span className="text-sm font-medium">{getStatusText(doc.status)}</span>
+                      </div>
+                      <div>
+                        <p className="font-medium">{doc.filename}</p>
                         <p className="text-sm text-muted-foreground">
-                          {doc.total.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                          {getDocumentTypeText(doc.documentType)} • {new Date(doc.createdAt).toLocaleDateString()}
                         </p>
-                      )}
-                      {doc.items && (
-                        <p className="text-xs text-muted-foreground">{doc.items} productos</p>
-                      )}
+                      </div>
                     </div>
-                    {doc.status === 'completed' && doc.extractedData && (
+                    <div className="flex items-center gap-2">
+                      <div className="text-right">
+                        {doc.supplier && (
+                          <p className="text-sm font-medium">{doc.supplier.name}</p>
+                        )}
+                        {doc.totalAmount && (
+                          <p className="text-sm text-muted-foreground">
+                            {doc.totalAmount.toLocaleString('es-ES', { style: 'currency', currency: 'EUR' })}
+                          </p>
+                        )}
+                        {doc.items && doc.items.length > 0 && (
+                          <p className="text-xs text-muted-foreground">{doc.items.length} productos</p>
+                        )}
+                      </div>
+                      {doc.status === 'PROCESSED' && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedDocument(doc)
+                            setIsModalOpen(true)
+                          }}
+                        >
+                          <Eye className="h-4 w-4 mr-2" />
+                          Ver Datos
+                        </Button>
+                      )}
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => {
-                          setSelectedDocument(doc)
-                          setIsModalOpen(true)
+                          if (confirm('¿Estás seguro de que quieres eliminar este documento?')) {
+                            deleteDocument(doc.id)
+                          }
                         }}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
                       >
-                        <Eye className="h-4 w-4 mr-2" />
-                        Ver Datos
+                        <Trash2 className="h-4 w-4" />
                       </Button>
-                    )}
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        if (confirm('¿Estás seguro de que quieres eliminar este documento?')) {
-                          deleteDocument(doc.id)
-                        }
-                      }}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    </div>
                   </div>
+                ))}
+                {filteredDocuments.length === 0 && !isLoading && (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">No hay documentos para mostrar</p>
+                  </div>
+                )}
                 </div>
-              ))}
-              </div>
+              )}
             </CardContent>
           </Card>
           </div>
@@ -733,29 +739,6 @@ export default function DocumentsPage() {
           </div>
         </div>
       </div>
-      {(processingOcrTexts.length > 0 || selectedOcrTexts.length > 0) && (
-        <div className="mt-8">
-          <h2 className="text-lg font-bold mb-2">Texto completo extraído</h2>
-          {processingOcrTexts.map(({ id, name, text }) => (
-            <div key={id} className="mb-4">
-              <div className="font-semibold text-sm text-blue-700 mb-1">Procesando: {name}</div>
-              <div className="bg-gray-100 border border-blue-200 rounded p-3 text-xs max-h-64 overflow-auto whitespace-pre-wrap">
-                {text || 'Procesando...'}
-              </div>
-            </div>
-          ))}
-          {selectedOcrTexts.map(({ id, name, text }) => (
-            <div key={id} className="mb-4">
-              <div className="font-semibold text-sm text-green-700 mb-1">{name}</div>
-              <div className="bg-gray-100 border border-green-200 rounded p-3 text-xs max-h-96 overflow-auto whitespace-pre-wrap">
-                {text}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-
 
       {/* Modal de detalles del documento */}
       <DocumentDetailsModal

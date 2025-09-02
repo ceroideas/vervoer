@@ -66,15 +66,14 @@ export class HoldedClient {
 
   private async makeRequest(endpoint: string, options: RequestInit = {}) {
     const url = `${this.baseUrl}${endpoint}`;
-    console.log(url);
+    // URL de la petición
     
     const defaultHeaders = {
       'Content-Type': 'application/json',
       'key': this.apiKey,
     };
 
-    console.log(`🔗 Haciendo petición a Holded: ${url}`);
-    console.log(`🔑 API Key: ${this.apiKey.substring(0, 8)}...`);
+    // Haciendo petición a Holded
 
     try {
       const response = await fetch(url, {
@@ -85,7 +84,7 @@ export class HoldedClient {
         },
       });
 
-      console.log(`📡 Respuesta de Holded: ${response.status} ${response.statusText}`);
+      // Respuesta de Holded
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -94,13 +93,13 @@ export class HoldedClient {
       }
 
       const responseText = await response.text();
-      console.log(`📄 Respuesta completa de Holded:`, responseText);
+      // Respuesta completa de Holded
       
       // Verificar si la respuesta es JSON válido
       let data;
       try {
         data = JSON.parse(responseText);
-        console.log(`✅ Datos parseados de Holded:`, data);
+        // Datos parseados de Holded
         return data;
       } catch (parseError) {
         console.error(`❌ Error parseando JSON de Holded:`, parseError);
@@ -240,6 +239,15 @@ export class HoldedClient {
     return this.makeRequest(`/products/${id}`, {
       method: 'PUT',
       body: JSON.stringify(product),
+    });
+  }
+
+  /**
+   * Elimina un producto
+   */
+  async deleteProduct(id: string): Promise<void> {
+    return this.makeRequest(`/products/${id}`, {
+      method: 'DELETE',
     });
   }
 

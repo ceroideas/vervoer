@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -19,13 +19,19 @@ import {
   Download,
   Share2,
   Edit,
-  Plus
+  Plus,
+  TrendingUp,
+  TrendingDown,
+  AlertCircle
 } from 'lucide-react'
 
 import { Document, ExtractedData } from '@/types/invoice'
 import { InvoiceDataDisplay } from './InvoiceDataDisplay'
 import { CreateProductModal } from './CreateProductModal'
 import { HoldedIntegration } from './HoldedIntegration'
+import { PriceAlertBadge } from './PriceAlertBadge'
+import { PriceAlertDetails } from './PriceAlertDetails'
+import { DocumentItemAnalysis, PriceAnalysisResult } from '@/lib/document-price-analysis'
 
 interface DocumentDetailsModalProps {
   document: Document | null
@@ -35,6 +41,16 @@ interface DocumentDetailsModalProps {
 
 export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDetailsModalProps) {
   const [activeTab, setActiveTab] = useState('details')
+  const [priceAnalyses, setPriceAnalyses] = useState<DocumentItemAnalysis[]>([])
+  const [isAnalyzingPrices, setIsAnalyzingPrices] = useState(false)
+  const [priceAnalysisCompleted, setPriceAnalysisCompleted] = useState(false)
+  const [alertCounts, setAlertCounts] = useState({
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    total: 0
+  })
 
   if (!document) return null
 
@@ -86,6 +102,48 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
       default: return 'bg-gray-100 text-gray-800'
     }
   }
+
+  const analyzePrices = async () => {
+    if (!document?.extractedData?.items || document.extractedData.items.length === 0) {
+      return;
+    }
+
+    setIsAnalyzingPrices(true);
+    try {
+      const response = await fetch('/api/documents/analyze-prices', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          items: document.extractedData.items,
+          documentNumber: document.extractedData.documentNumber || document.filename,
+          documentDate: document.extractedData.documentDate || new Date().toISOString(),
+          supplierName: document.extractedData.supplier?.name || 'Proveedor desconocido'
+        }),
+      });
+
+      const result = await response.json();
+      
+      if (result.success) {
+        setPriceAnalyses(result.analyses);
+        setAlertCounts(result.alertCounts);
+        setPriceAnalysisCompleted(true);
+        // Análisis de precios completado
+      } else {
+        console.error('❌ Error en análisis de precios:', result.error);
+      }
+    } catch (error) {
+      console.error('❌ Error analizando precios:', error);
+    } finally {
+      setIsAnalyzingPrices(false);
+    }
+  };
+
+  const getPriceAnalysisForItem = (itemIndex: number): PriceAnalysisResult | null => {
+    const analysis = priceAnalyses.find(a => a.itemIndex === itemIndex);
+    return analysis?.priceAnalysis || null;
+  };
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -192,16 +250,53 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
                 {document.extractedData?.items && document.extractedData.items.length > 0 ? (
                   <Card>
                     <CardHeader>
-                      <CardTitle className="text-lg flex items-center justify-between">
-                        <span>Productos Detectados ({document.extractedData.items.length})</span>
-                        <Badge variant="outline" className="text-sm">
-                          {document.extractedData.items.length} productos
-                        </Badge>
-                      </CardTitle>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <CardTitle className="text-lg">
+                            Productos Detectados ({document.extractedData.items.length})
+                          </CardTitle>
+                          <Badge variant="outline" className="text-sm">
+                            {document.extractedData.items.length} productos
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {priceAnalysisCompleted && alertCounts.total > 0 && (
+                            <div className="flex items-center gap-1">
+                              <Badge variant="destructive" className="text-xs">
+                                {alertCounts.critical + alertCounts.high} Críticas
+                              </Badge>
+                              <Badge variant="secondary" className="text-xs">
+                                {alertCounts.medium + alertCounts.low} Alertas
+                              </Badge>
+                            </div>
+                          )}
+                          <Button
+                            onClick={analyzePrices}
+                            disabled={isAnalyzingPrices}
+                            variant="outline"
+                            size="sm"
+                            className="flex items-center gap-2"
+                          >
+                            {isAnalyzingPrices ? (
+                              <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
+                                Analizando...
+                              </>
+                            ) : (
+                              <>
+                                <TrendingUp className="h-4 w-4" />
+                                Analizar Precios
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
-                        {document.extractedData?.items?.map((item, index) => (
+                        {document.extractedData?.items?.map((item, index) => {
+                          const priceAnalysis = getPriceAnalysisForItem(index);
+                          return (
                           <div key={index} className="p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
                             <div className="flex items-center justify-between">
                               <div className="flex-1">
@@ -213,6 +308,9 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
                                     <Badge variant="outline" className="text-xs">
                                       Ref: {item.reference}
                                     </Badge>
+                                  )}
+                                  {priceAnalysis && (
+                                    <PriceAlertBadge analysis={priceAnalysis} />
                                   )}
                                 </div>
                                 
@@ -238,30 +336,44 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
                                     <span className="font-mono font-semibold text-blue-600">{formatCurrency(item.totalPrice)}</span>
                                   </div>
                                 </div>
+                                
+                                {/* Detalles de alerta de precio */}
+                                {priceAnalysis && priceAnalysis.hasPriceVariation && (
+                                  <div className="mt-4 pt-4 border-t border-gray-200">
+                                    <PriceAlertDetails analysis={priceAnalysis} item={item} />
+                                  </div>
+                                )}
                               </div>
                               
                               <div className="flex items-center gap-2 ml-4">
-                                <CreateProductModal 
-                                  prefillData={{
-                                    name: item.description || `Producto ${index + 1}`,
-                                    description: item.description || '',
-                                    price: item.unitPrice || 0,
-                                    cost: item.unitPrice || 0, // Usar precio unitario como costo
-                                    sku: item.reference || '',
-                                    tax: 21, // IVA por defecto en España
-                                    stock: item.quantity || 0,
-                                    weight: 0,
-                                    barcode: item.reference || '',
-                                    tags: document.extractedData?.supplier?.name || ''
-                                  }}
-                                  onProductCreated={() => {
-                                    console.log(`Producto ${index + 1} creado exitosamente`);
-                                  }}
-                                />
+                                {priceAnalysis && priceAnalysis.isInHolded ? (
+                                  <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                                    Ya en Holded
+                                  </Badge>
+                                ) : (
+                                  <CreateProductModal 
+                                    prefillData={{
+                                      name: item.description || `Producto ${index + 1}`,
+                                      description: item.description || '',
+                                      price: item.unitPrice || 0,
+                                      cost: item.unitPrice || 0, // Usar precio unitario como costo
+                                      sku: item.reference || '',
+                                      tax: 21, // IVA por defecto en España
+                                      stock: item.quantity || 0,
+                                      weight: 0,
+                                      barcode: item.reference || '',
+                                      tags: document.extractedData?.supplier?.name || ''
+                                    }}
+                                    onProductCreated={() => {
+                                      // Producto creado exitosamente
+                                    }}
+                                  />
+                                )}
                               </div>
                             </div>
                           </div>
-                        ))}
+                        );
+                        })}
                       </div>
                     </CardContent>
                   </Card>
@@ -333,7 +445,7 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
                     <Button
                       onClick={() => {
                         // Aquí podrías implementar una función para crear todos los productos de una vez
-                        console.log('Crear todos los productos');
+                        // Crear todos los productos
                       }}
                       className="flex items-center gap-2"
                     >
@@ -356,7 +468,7 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
               <HoldedIntegration
                 extractedData={document.extractedData}
                 onSyncComplete={(result) => {
-                  console.log('Sincronización completada:', result);
+                  // Sincronización completada
                 }}
               />
             ) : (

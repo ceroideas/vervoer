@@ -1,317 +1,300 @@
-import { NextRequest, NextResponse } from 'next/server';
-import Tesseract from 'tesseract.js';
-import { prisma } from '@/lib/prisma';
-import { AuthService } from '@/lib/auth';
-import { DocumentType } from '@prisma/client';
+import { NextRequest, NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
+import { getServerSession } from 'next-auth'
 
-interface ExtractedData {
-  documentType: 'invoice' | 'delivery_note';
-  documentNumber?: string;
-  date?: string;
-  supplier?: {
-    name?: string;
-    address?: string;
-    taxId?: string;
-  };
-  items?: Array<{
-    reference?: string;
-    description?: string;
-    quantity?: number;
-    unitPrice?: number;
-    discount?: number;
-    discountType?: 'percentage' | 'amount';
-    totalPrice?: number;
-  }>;
-  totals?: {
-    subtotal?: number;
-    discount?: number;
-    tax?: number;
-    total?: number;
-  };
-}
-
-function extractDataFromText(text: string): ExtractedData {
-  const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
-  
-  const extracted: ExtractedData = {
-    documentType: text.toLowerCase().includes('factura') ? 'invoice' : 'delivery_note',
-    items: [],
-    totals: {}
-  };
-
-  // Extraer número de documento
-  const documentNumberMatch = text.match(/(?:FACTURA|ALBARÁN|ALBARAN)\s*(?:Nº?|NÚMERO?|NUMERO?)?\s*:?\s*([A-Z0-9\-_\/]+)/i);
-  if (documentNumberMatch) {
-    extracted.documentNumber = documentNumberMatch[1];
-  }
-
-  // Extraer fecha
-  const dateMatch = text.match(/(?:FECHA|DATE)\s*:?\s*(\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4})/i);
-  if (dateMatch) {
-    extracted.date = dateMatch[1];
-  }
-
-  // Extraer proveedor
-  const supplierKeywords = ['PROVEEDOR', 'EMISOR', 'VENDEDOR', 'EMPRESA', 'COMPAÑÍA', 'COMPAÑIA'];
-  for (const keyword of supplierKeywords) {
-    const supplierMatch = text.match(new RegExp(`${keyword}\\s*:?\\s*([^\\n]+)`, 'i'));
-    if (supplierMatch) {
-      extracted.supplier = { name: supplierMatch[1].trim() };
-      break;
-    }
-  }
-
-  // Extraer productos
-  const itemLines = lines.filter(line => {
-    const hasNumbers = /\d+/.test(line);
-    const hasPrice = /[€$]?\s*\d+[,.]?\d*/.test(line);
-    const isNotHeader = !line.match(/^(FACTURA|ALBARÁN|ALBARAN|TOTAL|SUBTOTAL|IVA)/i);
-    return hasNumbers && (hasPrice || isNotHeader) && line.length > 10;
-  });
-
-  for (const line of itemLines.slice(0, 10)) {
-    const item: any = {};
-    
-    // Extraer cantidad
-    const quantityMatch = line.match(/(\d+(?:[,.]\d+)?)\s*(?:x|un|ud|pcs?)/i);
-    if (quantityMatch) {
-      item.quantity = parseFloat(quantityMatch[1].replace(',', '.'));
-    }
-
-    // Extraer precio unitario
-    const unitPriceMatch = line.match(/[€$]?\s*(\d+(?:[,.]\d+)?)\s*[€$]?/g);
-    if (unitPriceMatch && unitPriceMatch.length >= 2) {
-      const unitPrice = unitPriceMatch[0].replace(/[€$\s]/g, '').replace(',', '.');
-      item.unitPrice = parseFloat(unitPrice);
-    }
-
-    // Extraer descripción (todo lo que no sea número o precio)
-    const descriptionMatch = line.match(/^([^0-9€$]*?)(?:\d|€|$)/);
-    if (descriptionMatch) {
-      item.description = descriptionMatch[1].trim();
-    }
-
-    // Calcular total del item
-    if (item.quantity && item.unitPrice) {
-      item.totalPrice = item.quantity * item.unitPrice;
-    }
-
-    if (item.description && item.quantity) {
-      extracted.items!.push(item);
-    }
-  }
-
-  // Extraer totales
-  const totalMatch = text.match(/TOTAL\s*:?\s*[€$]?\s*(\d+(?:[,.]\d+)?)/i);
-  if (totalMatch) {
-    extracted.totals!.total = parseFloat(totalMatch[1].replace(',', '.'));
-  }
-
-  const subtotalMatch = text.match(/SUBTOTAL\s*:?\s*[€$]?\s*(\d+(?:[,.]\d+)?)/i);
-  if (subtotalMatch) {
-    extracted.totals!.subtotal = parseFloat(subtotalMatch[1].replace(',', '.'));
-  }
-
-  const taxMatch = text.match(/IVA\s*:?\s*[€$]?\s*(\d+(?:[,.]\d+)?)/i);
-  if (taxMatch) {
-    extracted.totals!.tax = parseFloat(taxMatch[1].replace(',', '.'));
-  }
-
-  return extracted;
-}
-
-export async function POST(req: NextRequest) {
+export async function POST(request: NextRequest) {
   try {
-    console.log('=== INICIANDO PROCESAMIENTO OCR CON GUARDADO ===')
-    
-    // Verificar autenticación
-    const authHeader = req.headers.get('authorization')
-    const token = authHeader?.replace('Bearer ', '') || req.cookies.get('auth-token')?.value
-
-    if (!token) {
-      return NextResponse.json({
-        success: false,
-        error: 'No autorizado'
-      }, { status: 401 })
+    // Verificar autenticación usando NextAuth
+    const session = await getServerSession()
+    if (!session?.user) {
+      return NextResponse.json(
+        { success: false, error: 'No autorizado' },
+        { status: 401 }
+      )
     }
 
-    const user = await AuthService.getCurrentUser(token)
-    if (!user) {
-      return NextResponse.json({
-        success: false,
-        error: 'Token inválido'
-      }, { status: 401 })
-    }
-
-    const formData = await req.formData();
-    const file = formData.get('file') as File;
+    // Obtener el archivo del FormData
+    const formData = await request.formData()
+    const file = formData.get('file') as File
     
     if (!file) {
-      return NextResponse.json({ 
-        success: false,
-        error: 'No se envió ningún archivo.' 
-      }, { status: 400 });
+      return NextResponse.json(
+        { success: false, error: 'No se proporcionó archivo' },
+        { status: 400 }
+      )
     }
 
-    console.log('📁 Archivo recibido:', file.name)
-    console.log('📏 Tamaño:', file.size, 'bytes')
+    // Crear documento en estado PENDING
+    const document = await prisma.document.create({
+      data: {
+        filename: file.name,
+        originalText: '',
+        extractedData: {},
+        documentType: file.name.toLowerCase().includes('factura') ? 'INVOICE' : 'DELIVERY_NOTE',
+        status: 'PENDING',
+        userId: session.user.id,
+        fileSize: file.size,
+        fileType: file.type
+      }
+    })
 
-    // Verificar tipo de archivo
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf', 'image/webp'];
-    if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({ 
-        success: false,
-        error: 'Tipo de archivo no soportado. Use: JPG, PNG, PDF' 
-      }, { status: 400 });
+
+    // Procesar con GPT-4o mini
+    
+    // Verificar API key
+    const openaiApiKey = process.env.OPENAI_API_KEY
+    if (!openaiApiKey) {
+      console.error('❌ OPENAI_API_KEY no está configurada')
+      return NextResponse.json(
+        { success: false, error: 'OPENAI_API_KEY no está configurada' },
+        { status: 500 }
+      )
     }
 
-    const startTime = Date.now();
-    const arrayBuffer = await file.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    
+    // Convertir archivo a base64
+    const arrayBuffer = await file.arrayBuffer()
+    const base64 = Buffer.from(arrayBuffer).toString('base64')
+    
+    // Llamar a la API de GPT-4o mini
+    const gptResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          {
+            role: 'user',
+            content: [
+                             {
+                 type: 'text',
+                 text: `Eres un experto en procesamiento de documentos comerciales. Tu tarea es extraer información estructurada de facturas y albaranes en español.
 
-    console.log('🔄 Iniciando reconocimiento OCR...')
+IMPORTANTE: Responde ÚNICAMENTE con un JSON válido que contenga los datos extraídos. No incluyas explicaciones adicionales.
 
-    // Reutilizar worker entre invocaciones para performance
-    if (!(globalThis as any).__OCR_WORKER__) {
-      (globalThis as any).__OCR_WORKER__ = (async () => {
-        const worker = await Tesseract.createWorker('spa', {
-          langPath: 'https://tessdata.projectnaptha.com/4.0.0_fast'
-        } as any)
-        await (worker as any).setParameters({
-          tessedit_pageseg_mode: String(Tesseract.PSM.AUTO),
-          user_defined_dpi: '300',
-          tessedit_char_blacklist: '¡¿'
-        })
-        return worker
-      })()
+Estructura del JSON esperado:
+{
+  "documentType": "invoice" o "delivery_note",
+  "supplier": {
+    "name": "Nombre del proveedor",
+    "address": "Dirección del proveedor (si está disponible)",
+    "taxId": "CIF/NIF del proveedor (si está disponible)"
+  },
+  "documentNumber": "Número de factura/albarán",
+  "date": "Fecha en formato DD/MM/YYYY",
+  "items": [
+    {
+      "reference": "Código de referencia del producto",
+      "description": "Descripción del producto",
+      "quantity": número,
+      "unitPrice": número (precio unitario sin descuentos),
+      "discount": número (descuento aplicado - porcentaje o cantidad),
+      "discountType": "percentage" o "amount" (tipo de descuento),
+      "totalPrice": número (precio total de la línea con descuentos aplicados)
     }
-    
-    const worker = await (globalThis as any).__OCR_WORKER__
-    const { data: { text } } = await worker.recognize(buffer)
-    
-    const processingTime = Date.now() - startTime;
-    console.log('✅ OCR completado en', processingTime, 'ms')
-    
-    // Extraer datos estructurados
-    const extractedData = extractDataFromText(text);
-    
-    console.log('📊 Datos extraídos:', JSON.stringify(extractedData, null, 2))
+  ],
+  "totals": {
+    "subtotal": número (suma de todos los importes, base imponible),
+    "discount": número (descuento total del documento si existe),
+    "tax": número (IVA),
+    "total": número (total final)
+  }
+}
 
-    // Procesar proveedor si existe
-    let supplierId: string | undefined
-    if (extractedData.supplier?.name) {
-      let supplier = await prisma.supplier.findFirst({
-        where: {
-          OR: [
-            { name: { equals: extractedData.supplier.name, mode: 'insensitive' } },
-            { taxId: extractedData.supplier.taxId }
-          ]
+INSTRUCCIONES ESPECÍFICAS:
+1. Busca el nombre del proveedor cerca de palabras como "PROVEEDOR", "EMISOR", "VENDEDOR", "EMPRESA"
+2. El número de documento puede aparecer como "FACTURA Nº", "ALBARÁN Nº", etc.
+3. La fecha puede estar en formato DD/MM/YYYY, DD-MM-YYYY, o similar
+4. Para los productos, identifica líneas que contengan: referencia, descripción, cantidad, precio unitario, descuento, importe
+5. Los precios unitarios deben ser el precio SIN descuentos aplicados
+6. Los descuentos pueden aparecer como:
+   - Porcentaje: "10%", "15% dto", "descuento 20%"
+   - Cantidad: "5€ dto", "descuento 10€", "-5€"
+7. El totalPrice debe ser el precio final CON descuentos aplicados
+8. Busca descuentos totales del documento en secciones como "DESCUENTO TOTAL", "DTOS. TOTALES"
+9. La base imponible es la suma de todos los importes de productos
+10. El total es la base imponible + IVA
+11. Si algún dato no está disponible, usa null o string vacío
+12. Los números deben ser números, no strings
+13. Maneja correctamente los separadores decimales (comas y puntos)`
+               },
+              {
+                type: 'image_url',
+                image_url: {
+                  url: `data:${file.type};base64,${base64}`
+                }
+              }
+            ]
+          }
+        ],
+        max_tokens: 2000
+      })
+    })
+
+    if (!gptResponse.ok) {
+      const errorText = await gptResponse.text()
+      console.error('❌ Error en GPT-4o mini:', gptResponse.status, gptResponse.statusText)
+      console.error('❌ Detalles del error:', errorText)
+      
+      // Actualizar documento con error
+      await prisma.document.update({
+        where: { id: document.id },
+        data: {
+          status: 'ERROR',
+          holdedError: `Error en GPT-4o mini: ${gptResponse.status} ${gptResponse.statusText}`
         }
       })
+      
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: `Error en GPT-4o mini: ${gptResponse.status} ${gptResponse.statusText}`,
+          details: errorText
+        },
+        { status: gptResponse.status }
+      )
+    }
 
+    const gptData = await gptResponse.json()
+
+    // Extraer el JSON de la respuesta
+    let extractedData
+    try {
+      const content = gptData.choices[0]?.message?.content
+      if (!content) {
+        throw new Error('No se recibió contenido de GPT-4o mini')
+      }
+
+      // Buscar JSON en la respuesta
+      const jsonMatch = content.match(/\{[\s\S]*\}/)
+      if (!jsonMatch) {
+        throw new Error('No se encontró JSON en la respuesta')
+      }
+
+      extractedData = JSON.parse(jsonMatch[0])
+    } catch (parseError) {
+      console.error('❌ Error parseando respuesta de GPT:', parseError)
+      
+      // Actualizar documento con error
+      await prisma.document.update({
+        where: { id: document.id },
+        data: {
+          status: 'ERROR',
+          holdedError: `Error parseando respuesta: ${parseError}`
+        }
+      })
+      
+      return NextResponse.json(
+        { success: false, error: 'Error parseando respuesta de GPT-4o mini' },
+        { status: 500 }
+      )
+    }
+
+    // Buscar o crear proveedor
+    let supplier = null
+    if (extractedData.supplier?.name) {
+      // Primero buscar si ya existe un proveedor con ese nombre
+      supplier = await prisma.supplier.findFirst({
+        where: { name: extractedData.supplier.name }
+      })
+      
+      // Si no existe, crear uno nuevo
       if (!supplier) {
         supplier = await prisma.supplier.create({
           data: {
             name: extractedData.supplier.name,
-            taxId: extractedData.supplier.taxId,
-            address: extractedData.supplier.address
+            address: extractedData.supplier.address || null,
+            taxId: extractedData.supplier.taxId || null,
+            isActive: true
           }
         })
       }
-
-      supplierId = supplier.id
     }
 
-    // Crear documento en base de datos
-    const document = await prisma.document.create({
-      data: {
-        filename: file.name,
-        originalText: text,
-        extractedData: extractedData as any,
-        documentType: extractedData.documentType === 'invoice' ? 'INVOICE' : 'DELIVERY_NOTE',
-        userId: user.id,
-        supplierId,
-        documentNumber: extractedData.documentNumber,
-        documentDate: extractedData.date ? new Date(extractedData.date) : null,
-        subtotal: extractedData.totals?.subtotal || 0,
-        taxAmount: extractedData.totals?.tax || 0,
-        totalAmount: extractedData.totals?.total || 0,
-        fileSize: file.size,
-        fileType: file.type,
-        processingTime,
-        status: 'PROCESSED'
-      },
-      include: {
-        supplier: true,
-        items: true,
-        processedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true
+    // Función para parsear fecha
+    const parseDate = (dateString: string): Date | null => {
+      if (!dateString) return null
+      
+      try {
+        // Intentar diferentes formatos de fecha
+        const formats = [
+          /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/, // DD/MM/YYYY
+          /^(\d{4})-(\d{1,2})-(\d{1,2})$/,   // YYYY-MM-DD
+          /^(\d{1,2})-(\d{1,2})-(\d{4})$/    // DD-MM-YYYY
+        ]
+        
+        for (const format of formats) {
+          const match = dateString.match(format)
+          if (match) {
+            if (format.source.includes('YYYY')) {
+              // Formato YYYY-MM-DD
+              return new Date(parseInt(match[1]), parseInt(match[2]) - 1, parseInt(match[3]))
+            } else {
+              // Formato DD/MM/YYYY o DD-MM-YYYY
+              return new Date(parseInt(match[3]), parseInt(match[2]) - 1, parseInt(match[1]))
+            }
           }
         }
+        
+        // Si no coincide con ningún formato, intentar con new Date()
+        const date = new Date(dateString)
+        return isNaN(date.getTime()) ? null : date
+      } catch (error) {
+        return null
+      }
+    }
+
+    // Actualizar documento con datos extraídos
+    const updatedDocument = await prisma.document.update({
+      where: { id: document.id },
+      data: {
+        originalText: gptData.choices[0]?.message?.content || '',
+        extractedData: extractedData,
+        status: 'PROCESSED',
+        supplierId: supplier?.id,
+        documentNumber: extractedData.documentNumber,
+        documentDate: parseDate(extractedData.date),
+        subtotal: extractedData.totals?.subtotal || 0,
+        taxAmount: extractedData.totals?.tax || 0, // Cambiado de taxAmount a tax
+        totalAmount: extractedData.totals?.total || 0
       }
     })
 
     // Crear items del documento
-    if (extractedData.items && extractedData.items.length > 0) {
-      const itemsData = extractedData.items.map(item => ({
-        reference: item.reference || '',
-        description: item.description || '',
-        quantity: item.quantity || 0,
-        unitPrice: item.unitPrice || 0,
-        total: item.totalPrice || 0,
-        documentId: document.id
-      }))
-
-      await prisma.documentItem.createMany({
-        data: itemsData
-      })
+    if (extractedData.items && Array.isArray(extractedData.items)) {
+      for (const item of extractedData.items) {
+        await prisma.documentItem.create({
+          data: {
+            reference: item.reference || '',
+            description: item.description || '',
+            quantity: item.quantity || 0,
+            unitPrice: item.unitPrice || 0,
+            total: item.totalPrice || 0,
+            documentId: document.id
+          }
+        })
+      }
     }
 
-    // Obtener documento con items actualizados
-    const documentWithItems = await prisma.document.findUnique({
-      where: { id: document.id },
-      include: {
-        supplier: true,
-        items: true,
-        processedBy: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        }
-      }
-    })
 
-    console.log('✅ Documento guardado en base de datos:', document.id)
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
       data: {
-        document: documentWithItems,
-        extractedData,
-        text,
-        processingTime,
-        fileInfo: {
-          name: file.name,
-          size: file.size,
-          type: file.type
-        }
+        document: updatedDocument,
+        extractedData: extractedData
       },
-      message: 'Documento procesado y guardado exitosamente'
-    });
-    
+      message: 'Documento procesado correctamente'
+    })
+
   } catch (error) {
-    console.error('❌ Error en procesamiento OCR:', error);
-    
-    return NextResponse.json({ 
-      success: false,
-      error: 'Error procesando el documento', 
-      details: String(error),
-      timestamp: new Date().toISOString()
-    }, { status: 500 });
+    console.error('❌ Error en procesamiento:', error)
+    return NextResponse.json(
+      { success: false, error: 'Error interno del servidor' },
+      { status: 500 }
+    )
   }
 }

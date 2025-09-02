@@ -25,7 +25,7 @@ interface InvoiceDataDisplayProps {
 
 export function InvoiceDataDisplay({ data, ocrData, gptData, isLoading }: InvoiceDataDisplayProps) {
   // Debug logging
-  console.log('🔍 InvoiceDataDisplay recibió:', { data, ocrData, gptData, isLoading });
+  // InvoiceDataDisplay recibió datos
   
   if (isLoading) {
     return (

@@ -3,7 +3,7 @@ import { AdminLayout } from '@/components/admin/AdminLayout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   Users, 
   UserPlus, 
@@ -11,43 +11,59 @@ import {
   Edit,
   Trash2,
   Mail,
-  Phone
+  Phone,
+  Loader2,
+  AlertCircle
 } from 'lucide-react'
+import { CreateUserModal } from '@/components/CreateUserModal'
+import { EditUserModal } from '@/components/EditUserModal'
+import { DeleteUserModal } from '@/components/DeleteUserModal'
+import { toast } from 'sonner'
 
 interface User {
   id: string
   name: string
   email: string
-  role: 'admin' | 'user'
+  role: 'ADMIN' | 'USER' | 'VIEWER'
   status: 'active' | 'inactive'
-  createdAt: Date
-  lastLogin?: Date
+  createdAt: string
+  updatedAt: string
+  documentCount: number
 }
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<User[]>([
-    {
-      id: '1',
-      name: 'Administrador',
-      email: 'admin@vervoer.com',
-      role: 'admin',
-      status: 'active',
-      createdAt: new Date('2024-01-01'),
-      lastLogin: new Date()
-    },
-    {
-      id: '2',
-      name: 'Juan Pérez',
-      email: 'juan@vervoer.com',
-      role: 'user',
-      status: 'active',
-      createdAt: new Date('2024-01-15'),
-      lastLogin: new Date('2024-01-20')
-    }
-  ])
-
+  const [users, setUsers] = useState<User[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [roleFilter, setRoleFilter] = useState<string>('all')
+  
+  // Estados de los modales
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<User | null>(null)
+
+  // Cargar usuarios
+  const fetchUsers = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch('/api/users')
+      if (!response.ok) {
+        throw new Error('Error al cargar usuarios')
+      }
+      const data = await response.json()
+      setUsers(data)
+    } catch (error) {
+      console.error('Error fetching users:', error)
+      toast.error('Error al cargar los usuarios')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchUsers()
+  }, [])
 
   const filteredUsers = users.filter(user => {
     const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -57,18 +73,70 @@ export default function UsersPage() {
   })
 
   const getRoleText = (role: User['role']) => {
-    return role === 'admin' ? 'Administrador' : 'Usuario'
+    const roleMap = {
+      'ADMIN': 'Administrador',
+      'USER': 'Usuario',
+      'VIEWER': 'Visualizador'
+    }
+    return roleMap[role]
   }
 
   const getStatusText = (status: User['status']) => {
     return status === 'active' ? 'Activo' : 'Inactivo'
   }
 
+  const getRoleBadgeColor = (role: User['role']) => {
+    const colorMap = {
+      'ADMIN': 'bg-red-100 text-red-800 border-red-200',
+      'USER': 'bg-blue-100 text-blue-800 border-blue-200',
+      'VIEWER': 'bg-gray-100 text-gray-800 border-gray-200'
+    }
+    return colorMap[role]
+  }
+
+  const getStatusBadgeColor = (status: User['status']) => {
+    return status === 'active' 
+      ? 'bg-green-100 text-green-800 border-green-200'
+      : 'bg-gray-100 text-gray-600 border-gray-200'
+  }
+
+  const handleEditUser = (user: User) => {
+    setSelectedUser(user)
+    setIsEditModalOpen(true)
+  }
+
+  const handleDeleteUser = (user: User) => {
+    setSelectedUser(user)
+    setIsDeleteModalOpen(true)
+  }
+
+  const handleUserCreated = () => {
+    fetchUsers()
+  }
+
+  const handleUserUpdated = () => {
+    fetchUsers()
+  }
+
+  const handleUserDeleted = () => {
+    fetchUsers()
+  }
+
+  if (isLoading) {
+    return (
+      <AdminLayout title="Gestión de Usuarios">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+        </div>
+      </AdminLayout>
+    )
+  }
+
   return (
     <AdminLayout title="Gestión de Usuarios">
       <div className="grid gap-6">
         {/* Estadísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Usuarios</CardTitle>
@@ -85,8 +153,8 @@ export default function UsersPage() {
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-600">
-                {users.filter(u => u.role === 'admin').length}
+              <div className="text-2xl font-bold text-red-600">
+                {users.filter(u => u.role === 'ADMIN').length}
               </div>
             </CardContent>
           </Card>
@@ -102,6 +170,18 @@ export default function UsersPage() {
               </div>
             </CardContent>
           </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Documentos Procesados</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-blue-600">
+                {users.reduce((total, user) => total + user.documentCount, 0)}
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Acciones */}
@@ -114,7 +194,7 @@ export default function UsersPage() {
           </CardHeader>
           <CardContent>
             <div className="flex gap-4">
-              <Button>
+              <Button onClick={() => setIsCreateModalOpen(true)}>
                 <UserPlus className="h-4 w-4 mr-2" />
                 Nuevo Usuario
               </Button>
@@ -146,8 +226,9 @@ export default function UsersPage() {
                 className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
                 <option value="all">Todos los roles</option>
-                <option value="admin">Administradores</option>
-                <option value="user">Usuarios</option>
+                <option value="ADMIN">Administradores</option>
+                <option value="USER">Usuarios</option>
+                <option value="VIEWER">Visualizadores</option>
               </select>
             </div>
           </CardContent>
@@ -162,35 +243,81 @@ export default function UsersPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {filteredUsers.map((user) => (
-                <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center gap-4">
-                    <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
-                      <Users className="h-5 w-5 text-blue-600" />
+            {filteredUsers.length === 0 ? (
+              <div className="text-center py-8">
+                <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-500">No se encontraron usuarios</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {filteredUsers.map((user) => (
+                  <div key={user.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
+                    <div className="flex items-center gap-4">
+                      <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                        <Users className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="font-medium">{user.name}</p>
+                        <p className="text-sm text-muted-foreground">{user.email}</p>
+                        <div className="flex gap-2 mt-1">
+                          <span className={`px-2 py-1 text-xs rounded-full border ${getRoleBadgeColor(user.role)}`}>
+                            {getRoleText(user.role)}
+                          </span>
+                          <span className={`px-2 py-1 text-xs rounded-full border ${getStatusBadgeColor(user.status)}`}>
+                            {getStatusText(user.status)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Creado: {new Date(user.createdAt).toLocaleDateString('es-ES')}
+                          {user.documentCount > 0 && ` • ${user.documentCount} documento${user.documentCount !== 1 ? 's' : ''}`}
+                        </p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="font-medium">{user.name}</p>
-                      <p className="text-sm text-muted-foreground">{user.email}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {getRoleText(user.role)} • {getStatusText(user.status)}
-                      </p>
+                    <div className="flex items-center gap-2">
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleEditUser(user)}
+                      >
+                        <Edit className="h-4 w-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => handleDeleteUser(user)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="ghost" size="sm">
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="text-red-600">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Modales */}
+      <CreateUserModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onUserCreated={handleUserCreated}
+      />
+
+      <EditUserModal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onUserUpdated={handleUserUpdated}
+        user={selectedUser}
+      />
+
+      <DeleteUserModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
+        onUserDeleted={handleUserDeleted}
+        user={selectedUser}
+      />
     </AdminLayout>
   )
 }

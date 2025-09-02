@@ -24,6 +24,11 @@ import {
 } from 'lucide-react'
 import { CreateProductModal } from '@/components/CreateProductModal'
 import { CreateContactModal } from '@/components/CreateContactModal'
+import { ViewProductModal } from '@/components/ViewProductModal'
+import { EditProductModal } from '@/components/EditProductModal'
+import { DeleteProductModal } from '@/components/DeleteProductModal'
+import { PriceAlertsPanel } from '@/components/PriceAlertsPanel'
+import { ProductPriceHistory } from '@/components/ProductPriceHistory'
 
 interface HoldedProduct {
   id: string;
@@ -257,6 +262,9 @@ export default function HoldedPage() {
           </Card>
         </div>
 
+        {/* Panel de Alertas de Precios */}
+        <PriceAlertsPanel onProductUpdate={loadHoldedData} />
+
         {/* Navegación por tipo de datos */}
         <Card>
           <CardContent className="p-4">
@@ -351,12 +359,10 @@ export default function HoldedPage() {
                           <div className="flex items-start justify-between mb-2">
                             <h3 className="font-medium truncate">{product.name}</h3>
                             <div className="flex space-x-1">
-                              <Button size="sm" variant="outline">
-                                <Eye className="h-3 w-3" />
-                              </Button>
-                              <Button size="sm" variant="outline">
-                                <Edit className="h-3 w-3" />
-                              </Button>
+                              <ViewProductModal product={product} />
+                              <EditProductModal product={product} onProductUpdated={loadHoldedData} />
+                              <DeleteProductModal product={product} onProductDeleted={loadHoldedData} />
+                              <ProductPriceHistory productId={product.id} productName={product.name} />
                             </div>
                           </div>
                           {product.sku && (
@@ -367,9 +373,12 @@ export default function HoldedPage() {
                           )}
                           <div className="flex justify-between items-center">
                             <span className="font-medium">{formatCurrency(product.price)}</span>
-                            {product.category && (
-                              <Badge variant="outline">{product.category}</Badge>
-                            )}
+                            <div className="flex items-center gap-2">
+                              {product.category && (
+                                <Badge variant="outline">{product.category}</Badge>
+                              )}
+                              {/* Indicador de alerta de precio (se puede implementar más adelante) */}
+                            </div>
                           </div>
                         </CardContent>
                       </Card>

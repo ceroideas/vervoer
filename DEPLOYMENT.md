@@ -1,77 +1,114 @@
-# 🚀 Guía de Despliegue Manual - Vervoer
+# �� Guía de Despliegue - Vervoer
+
+Esta guía te ayudará a desplegar Vervoer en un servidor Ubuntu.
 
 ## 📋 Requisitos del Servidor
 
-### **Sistema Operativo:**
-- Ubuntu 20.04+ / CentOS 7+ / Debian 10+
-- Windows Server 2019+
+- Ubuntu 20.04 LTS o superior
+- Mínimo 2GB RAM
+- Mínimo 20GB espacio en disco
+- Acceso SSH con privilegios sudo
 
-### **Software Requerido:**
-- Node.js 18.x o superior
-- npm 9.x o superior
-- PM2 (para gestión de procesos)
+## 🔧 Configuración Inicial del Servidor
 
-## 🔧 Instalación en el Servidor
+### 1. Ejecutar Script de Configuración
 
-### **1. Instalar Node.js:**
 ```bash
-# Ubuntu/Debian
+# Descargar y ejecutar el script de configuración
+curl -fsSL https://raw.githubusercontent.com/tu-usuario/vervoer/main/server-setup.sh | bash
+```
+
+O si ya tienes el repositorio clonado:
+
+```bash
+chmod +x server-setup.sh
+./server-setup.sh
+```
+
+### 2. Configuración Manual (Alternativa)
+
+Si prefieres configurar manualmente:
+
+```bash
+# Actualizar sistema
+sudo apt update && sudo apt upgrade -y
+
+# Instalar Node.js 18.x
 curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
 sudo apt-get install -y nodejs
 
-# CentOS/RHEL
-curl -fsSL https://rpm.nodesource.com/setup_18.x | sudo bash -
-sudo yum install -y nodejs
+# Instalar PostgreSQL
+sudo apt install -y postgresql postgresql-contrib
 
-# Verificar instalación
-node --version
-npm --version
+# Instalar Nginx
+sudo apt install -y nginx
+
+# Instalar PM2
+sudo npm install -g pm2 tsx
 ```
 
-### **2. Instalar PM2:**
+## 📁 Configuración de la Aplicación
+
+### 1. Clonar el Repositorio
+
 ```bash
-npm install -g pm2
+cd /var/www
+sudo git clone https://github.com/tu-usuario/vervoer.git
+sudo chown -R $USER:$USER vervoer
+cd vervoer
 ```
 
-### **3. Subir Archivos:**
+### 2. Configurar Variables de Entorno
+
 ```bash
-# Crear directorio de la aplicación
-mkdir -p /var/www/vervoer
-cd /var/www/vervoer
+# Crear archivo .env
+cat > .env <<EOF
+# Database
+DATABASE_URL="postgresql://vervoer_user:vervoer_password@localhost:5432/vervoer_db"
 
-# Subir todos los archivos del proyecto
-# (puedes usar scp, rsync, o subir por FTP)
-```
+# JWT
+JWT_SECRET="tu_jwt_secret_super_seguro_aqui_cambialo_en_produccion"
 
-### **4. Instalar Dependencias:**
-```bash
-cd /var/www/vervoer
-npm install --production
-```
+# Holded API
+HOLDED_API_KEY="tu_holded_api_key_aqui"
 
-## ⚙️ Configuración
+# OpenAI API
+OPENAI_API_KEY="tu_openai_api_key_aqui"
 
-### **1. Variables de Entorno:**
-Crear archivo `.env.local` en la raíz del proyecto:
-```env
-# API Keys
-OPENAI_API_KEY=tu_api_key_de_openai
-HOLDED_API_KEY=d2e52f08894f3322cdf43d4e58c0d909
-
-# NextAuth
-NEXTAUTH_SECRET=tu_secret_muy_seguro_aqui
-NEXTAUTH_URL=https://tu-dominio.com
-
-# Configuración del servidor
-PORT=3000
+# Environment
 NODE_ENV=production
+EOF
 ```
 
-### **2. Configurar Nginx (Recomendado):**
+### 3. Configurar Base de Datos
+
+```bash
+# Crear usuario y base de datos PostgreSQL
+sudo -u postgres psql -c "CREATE USER vervoer_user WITH PASSWORD 'vervoer_password';"
+sudo -u postgres psql -c "CREATE DATABASE vervoer_db OWNER vervoer_user;"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE vervoer_db TO vervoer_user;"
+```
+
+### 4. Instalar y Configurar la Aplicación
+
+```bash
+# Instalar dependencias
+npm install
+
+# Configurar la aplicación (base de datos, usuarios, etc.)
+npm run server:setup
+```
+
+## 🌐 Configuración de Nginx
+
+### 1. Configurar Dominio
+
+Editar `/etc/nginx/sites-available/vervoer`:
+
 ```nginx
 server {
     listen 80;
-    server_name tu-dominio.com;
+    server_name tu-dominio.com www.tu-dominio.com;
 
     location / {
         proxy_pass http://localhost:3000;
@@ -87,131 +124,206 @@ server {
 }
 ```
 
+### 2. Habilitar el Sitio
+
+```bash
+sudo ln -sf /etc/nginx/sites-available/vervoer /etc/nginx/sites-enabled/
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t
+sudo systemctl reload nginx
+```
+
 ## 🚀 Iniciar la Aplicación
 
-### **Opción 1: Con PM2 (Recomendado):**
+### Opción 1: Con PM2 (Recomendado)
+
 ```bash
-cd /var/www/vervoer
-pm2 start ecosystem.config.js --env production
-pm2 save
+# Iniciar con PM2
+pm2 start npm --name "vervoer" -- start
+
+# Configurar para iniciar automáticamente
 pm2 startup
+pm2 save
 ```
 
-### **Opción 2: Directamente con npm:**
+### Opción 2: Con Systemd
+
 ```bash
-cd /var/www/vervoer
-npm start
+# Iniciar el servicio
+sudo systemctl start vervoer
+sudo systemctl enable vervoer
 ```
 
-### **Opción 3: Con Node directamente:**
-```bash
-cd /var/www/vervoer
-node server.js
-```
+## 📝 Comandos Útiles
 
-## 📊 Gestión de la Aplicación
+### Gestión de la Aplicación
 
-### **Comandos PM2 Útiles:**
 ```bash
-# Ver estado de la aplicación
+# Ver estado
 pm2 status
+sudo systemctl status vervoer
 
 # Ver logs
 pm2 logs vervoer
+sudo journalctl -u vervoer -f
+
+# Reiniciar
+pm2 restart vervoer
+sudo systemctl restart vervoer
+
+# Detener
+pm2 stop vervoer
+sudo systemctl stop vervoer
+```
+
+### Gestión de la Base de Datos
+
+```bash
+# Generar cliente Prisma
+npm run db:generate
+
+# Aplicar migraciones
+npm run db:deploy
+
+# Ejecutar seeds
+npm run db:seed
+
+# Abrir Prisma Studio (solo desarrollo)
+npm run db:studio
+```
+
+### Despliegue de Actualizaciones
+
+```bash
+# Obtener cambios
+git pull origin main
+
+# Instalar dependencias
+npm install
+
+# Aplicar migraciones
+npm run server:migrate
 
 # Reiniciar aplicación
 pm2 restart vervoer
-
-# Detener aplicación
-pm2 stop vervoer
-
-# Eliminar aplicación
-pm2 delete vervoer
 ```
 
-### **Monitoreo:**
+## 🔒 Configuración de Seguridad
+
+### 1. Firewall
+
 ```bash
-# Dashboard de PM2
-pm2 monit
-
-# Ver uso de recursos
-pm2 show vervoer
-```
-
-## 🔒 Seguridad
-
-### **1. Firewall:**
-```bash
-# Ubuntu/Debian
+# Configurar UFW
+sudo ufw allow ssh
 sudo ufw allow 80
 sudo ufw allow 443
-sudo ufw allow 22
-
-# CentOS/RHEL
-sudo firewall-cmd --permanent --add-port=80/tcp
-sudo firewall-cmd --permanent --add-port=443/tcp
-sudo firewall-cmd --reload
+sudo ufw --force enable
 ```
 
-### **2. SSL/HTTPS:**
+### 2. SSL/HTTPS (Opcional)
+
 ```bash
 # Instalar Certbot
-sudo apt install certbot python3-certbot-nginx
+sudo apt install -y certbot python3-certbot-nginx
 
 # Obtener certificado SSL
-sudo certbot --nginx -d tu-dominio.com
+sudo certbot --nginx -d tu-dominio.com -d www.tu-dominio.com
 ```
 
-## 📁 Estructura de Archivos
+### 3. Cambiar Contraseñas por Defecto
 
-```
-/var/www/vervoer/
-├── .next/                 # Build de producción
-├── node_modules/          # Dependencias
-├── public/               # Archivos estáticos
-├── src/                  # Código fuente
-├── .env.local           # Variables de entorno
-├── ecosystem.config.js   # Configuración PM2
-├── package.json         # Dependencias
-└── next.config.js       # Configuración Next.js
+```bash
+# Cambiar contraseña de PostgreSQL
+sudo -u postgres psql -c "ALTER USER vervoer_user PASSWORD 'nueva_contraseña_segura';"
+
+# Actualizar DATABASE_URL en .env
+# Cambiar JWT_SECRET en .env
 ```
 
-## 🔧 Troubleshooting
+## 🐛 Solución de Problemas
 
-### **Problemas Comunes:**
+### Verificar Estado de Servicios
 
-1. **Error de puerto en uso:**
-   ```bash
-   sudo lsof -i :3000
-   sudo kill -9 PID
-   ```
+```bash
+# Verificar servicios
+sudo systemctl status postgresql
+sudo systemctl status nginx
+pm2 status
 
-2. **Error de permisos:**
-   ```bash
-   sudo chown -R www-data:www-data /var/www/vervoer
-   sudo chmod -R 755 /var/www/vervoer
-   ```
+# Verificar puertos
+sudo netstat -tlnp | grep :3000
+sudo netstat -tlnp | grep :5432
+sudo netstat -tlnp | grep :80
+```
 
-3. **Error de memoria:**
-   ```bash
-   # Aumentar memoria para Node.js
-   export NODE_OPTIONS="--max-old-space-size=2048"
-   ```
+### Logs de Errores
 
-4. **Logs de errores:**
-   ```bash
-   pm2 logs vervoer --lines 100
-   tail -f /var/log/nginx/error.log
-   ```
+```bash
+# Logs de la aplicación
+pm2 logs vervoer --lines 50
+
+# Logs de Nginx
+sudo tail -f /var/log/nginx/error.log
+
+# Logs de PostgreSQL
+sudo tail -f /var/log/postgresql/postgresql-*.log
+```
+
+### Problemas Comunes
+
+1. **Error de conexión a la base de datos**
+   - Verificar que PostgreSQL esté corriendo
+   - Verificar DATABASE_URL en .env
+   - Verificar permisos del usuario
+
+2. **Error 502 Bad Gateway**
+   - Verificar que la aplicación esté corriendo en puerto 3000
+   - Verificar configuración de Nginx
+   - Revisar logs de Nginx
+
+3. **Error de permisos**
+   - Verificar propietario de archivos: `sudo chown -R $USER:$USER /var/www/vervoer`
+   - Verificar permisos de directorios: `chmod 755 /var/www/vervoer`
+
+## 📊 Monitoreo
+
+### PM2 Dashboard
+
+```bash
+# Abrir dashboard de PM2
+pm2 monit
+```
+
+### Logs en Tiempo Real
+
+```bash
+# Ver logs de todos los servicios
+pm2 logs --lines 100
+```
+
+## 🔄 Actualizaciones
+
+### Script de Actualización Automática
+
+```bash
+#!/bin/bash
+cd /var/www/vervoer
+git pull origin main
+npm install
+npm run server:migrate
+pm2 restart vervoer
+echo "Actualización completada"
+```
 
 ## 📞 Soporte
 
-Si tienes problemas durante el despliegue:
-1. Revisa los logs: `pm2 logs vervoer`
-2. Verifica las variables de entorno
-3. Confirma que Node.js 18+ está instalado
-4. Verifica que el puerto 3000 esté disponible
+Si encuentras problemas:
+
+1. Revisa los logs de error
+2. Verifica la configuración de variables de entorno
+3. Asegúrate de que todos los servicios estén corriendo
+4. Consulta la documentación de Prisma y Next.js
 
 ---
 
-**¡Tu aplicación Vervoer está lista para producción! 🎉** 
+**¡Tu aplicación Vervoer está lista para usar!** 🎉 
