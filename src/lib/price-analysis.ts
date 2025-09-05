@@ -79,7 +79,7 @@ export class PriceAnalysisService {
 
       return {
         productMatch,
-        priceVariation,
+        priceVariation: priceVariation || undefined,
         shouldCreateAlert,
         recommendedAction,
         confidence: productMatch.confidence
@@ -243,7 +243,7 @@ export class PriceAnalysisService {
       id: priceVariation.id,
       productId: priceVariation.productId,
       productName: priceVariation.productName,
-      productSku: priceVariation.productSku,
+      productSku: priceVariation.productSku || undefined,
       oldPrice: priceVariation.oldPrice,
       newPrice: priceVariation.newPrice,
       variationPercentage: priceVariation.variationPercentage,
@@ -254,7 +254,7 @@ export class PriceAnalysisService {
       alertType: priceVariation.alertType.toLowerCase() as any,
       severity: priceVariation.severity.toLowerCase() as any,
       isProcessed: priceVariation.isProcessed,
-      notes: priceVariation.notes,
+      notes: priceVariation.notes || undefined,
       createdAt: priceVariation.createdAt.toISOString()
     };
   }
@@ -346,7 +346,7 @@ export class PriceAnalysisService {
         price: newData.price,
         cost: newData.cost || 0,
         name: newData.name,
-        desc: newData.description
+        description: newData.description
       });
       
       // Marcar variación como procesada
@@ -363,19 +363,39 @@ export class PriceAnalysisService {
   }
 
   /**
-   * Obtiene alertas de precios no procesadas
+   * Obtiene alertas de precios no procesadas que coincidan con productos existentes
    */
   async getUnprocessedAlerts(): Promise<PriceVariation[]> {
+    // Obtener productos de Holded para verificar cuáles existen
+    const holdedProducts = await holdedClient.getProducts();
+    const holdedProductIds = new Set(holdedProducts.map(p => p.id));
+
     const alerts = await prisma.priceVariation.findMany({
-      where: { isProcessed: false },
+      where: { 
+        isProcessed: false,
+        // Solo mostrar alertas de productos que existen en Holded
+        productId: {
+          in: Array.from(holdedProductIds)
+        }
+      },
       orderBy: { createdAt: 'desc' }
     });
 
-    return alerts.map(alert => ({
+    // Filtrar duplicados por productId y documentNumber
+    const uniqueAlerts = new Map();
+    
+    for (const alert of alerts) {
+      const key = `${alert.productId}-${alert.documentNumber}`;
+      if (!uniqueAlerts.has(key)) {
+        uniqueAlerts.set(key, alert);
+      }
+    }
+
+    return Array.from(uniqueAlerts.values()).map(alert => ({
       id: alert.id,
       productId: alert.productId,
       productName: alert.productName,
-      productSku: alert.productSku,
+      productSku: alert.productSku || undefined,
       oldPrice: alert.oldPrice,
       newPrice: alert.newPrice,
       variationPercentage: alert.variationPercentage,
@@ -386,7 +406,7 @@ export class PriceAnalysisService {
       alertType: alert.alertType.toLowerCase() as any,
       severity: alert.severity.toLowerCase() as any,
       isProcessed: alert.isProcessed,
-      notes: alert.notes,
+      notes: alert.notes || undefined,
       createdAt: alert.createdAt.toISOString()
     }));
   }

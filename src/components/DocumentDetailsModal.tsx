@@ -15,10 +15,6 @@ import {
   CheckCircle,
   AlertTriangle,
   Info,
-  X,
-  Download,
-  Share2,
-  Edit,
   Plus,
   TrendingUp,
   TrendingDown,
@@ -28,7 +24,6 @@ import {
 import { Document, ExtractedData } from '@/types/invoice'
 import { InvoiceDataDisplay } from './InvoiceDataDisplay'
 import { CreateProductModal } from './CreateProductModal'
-import { HoldedIntegration } from './HoldedIntegration'
 import { PriceAlertBadge } from './PriceAlertBadge'
 import { PriceAlertDetails } from './PriceAlertDetails'
 import { DocumentItemAnalysis, PriceAnalysisResult } from '@/lib/document-price-analysis'
@@ -117,8 +112,8 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
         },
         body: JSON.stringify({
           items: document.extractedData.items,
-          documentNumber: document.extractedData.documentNumber || document.filename,
-          documentDate: document.extractedData.documentDate || new Date().toISOString(),
+          documentNumber: document.extractedData.documentNumber || document.name,
+          documentDate: document.extractedData.date || new Date().toISOString(),
           supplierName: document.extractedData.supplier?.name || 'Proveedor desconocido'
         }),
       });
@@ -168,31 +163,13 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-2" />
-                Descargar
-              </Button>
-              <Button variant="outline" size="sm">
-                <Share2 className="h-4 w-4 mr-2" />
-                Compartir
-              </Button>
-              <Button variant="outline" size="sm">
-                <Edit className="h-4 w-4 mr-2" />
-                Editar
-              </Button>
-              <Button variant="outline" size="sm" onClick={onClose}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
           </div>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="details">Detalles</TabsTrigger>
             <TabsTrigger value="products">Productos</TabsTrigger>
-            <TabsTrigger value="integration">Integración</TabsTrigger>
           </TabsList>
 
           <TabsContent value="details" className="space-y-4">
@@ -463,21 +440,6 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
             )}
           </TabsContent>
 
-          <TabsContent value="integration" className="space-y-4">
-            {document.extractedData ? (
-              <HoldedIntegration
-                extractedData={document.extractedData}
-                onSyncComplete={(result) => {
-                  // Sincronización completada
-                }}
-              />
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-gray-400" />
-                <p>No hay datos para sincronizar</p>
-              </div>
-            )}
-          </TabsContent>
         </Tabs>
       </DialogContent>
     </Dialog>

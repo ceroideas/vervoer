@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { AuthService } from '@/lib/auth'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth-config'
+import { HoldedClient } from '@/holded/client'
 
 export async function GET(
   request: NextRequest,
@@ -9,21 +11,11 @@ export async function GET(
   try {
     const { id } = await params
     
-    // Verificar autenticación
-    const token = request.cookies.get('auth-token')?.value || 
-                  request.headers.get('authorization')?.replace('Bearer ', '')
-    
-    if (!token) {
+    // Verificar autenticación usando NextAuth
+    const session = await getServerSession(authOptions)
+    if (!session?.user) {
       return NextResponse.json(
         { success: false, error: 'No autorizado' },
-        { status: 401 }
-      )
-    }
-
-    const currentUser = await AuthService.getCurrentUser(token)
-    if (!currentUser) {
-      return NextResponse.json(
-        { success: false, error: 'Token inválido' },
         { status: 401 }
       )
     }
@@ -32,7 +24,6 @@ export async function GET(
     const product = await prisma.product.findUnique({
       where: { id },
       include: {
-        supplier: true,
         items: true
       }
     })
@@ -66,21 +57,11 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
     
-    // Verificar autenticación
-    const token = request.cookies.get('auth-token')?.value || 
-                  request.headers.get('authorization')?.replace('Bearer ', '')
-    
-    if (!token) {
+    // Verificar autenticación usando NextAuth
+    const session = await getServerSession(authOptions)
+    if (!session?.user) {
       return NextResponse.json(
         { success: false, error: 'No autorizado' },
-        { status: 401 }
-      )
-    }
-
-    const currentUser = await AuthService.getCurrentUser(token)
-    if (!currentUser) {
-      return NextResponse.json(
-        { success: false, error: 'Token inválido' },
         { status: 401 }
       )
     }
@@ -90,7 +71,6 @@ export async function PUT(
       where: { id },
       data: body,
       include: {
-        supplier: true,
         items: true
       }
     })
@@ -116,34 +96,62 @@ export async function DELETE(
   try {
     const { id } = await params
     
-    // Verificar autenticación
-    const token = request.cookies.get('auth-token')?.value || 
-                  request.headers.get('authorization')?.replace('Bearer ', '')
-    
-    if (!token) {
+    // Verificar autenticación usando NextAuth
+    const session = await getServerSession(authOptions)
+    if (!session?.user) {
       return NextResponse.json(
         { success: false, error: 'No autorizado' },
         { status: 401 }
       )
     }
 
-    const currentUser = await AuthService.getCurrentUser(token)
-    if (!currentUser) {
+    // Verificar API key de Holded
+    const holdedApiKey = process.env.HOLDED_API_KEY
+    if (!holdedApiKey) {
       return NextResponse.json(
-        { success: false, error: 'Token inválido' },
-        { status: 401 }
+        { success: false, error: 'HOLDED_API_KEY no está configurada' },
+        { status: 500 }
       )
     }
 
-    // Eliminar producto
-    await prisma.product.delete({
-      where: { id }
-    })
+    // Crear cliente de Holded
+    const holdedClient = new HoldedClient({ apiKey: holdedApiKey })
 
-    return NextResponse.json({
-      success: true,
-      message: 'Producto eliminado correctamente'
-    })
+    try {
+      // Eliminar producto de Holded
+      await holdedClient.deleteProduct(id)
+      
+      // Opcional: También eliminar de la base de datos local si existe
+      try {
+        await prisma.product.delete({
+          where: { id }
+        })
+      } catch (dbError) {
+        // Si no existe en la base de datos local, no es un error crítico
+        console.log('Producto no encontrado en base de datos local:', id)
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'Producto eliminado correctamente de Holded'
+      })
+
+    } catch (holdedError: any) {
+      console.error('Error eliminando producto de Holded:', holdedError)
+      
+      // Si el producto no existe en Holded, retornar error apropiado
+      if (holdedError.status === 404) {
+        return NextResponse.json(
+          { success: false, error: 'Producto no encontrado en Holded' },
+          { status: 404 }
+        )
+      }
+
+      return NextResponse.json(
+        { success: false, error: 'Error eliminando producto de Holded' },
+        { status: 500 }
+      )
+    }
 
   } catch (error) {
     console.error('Error eliminando producto:', error)

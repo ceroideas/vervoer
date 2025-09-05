@@ -217,45 +217,6 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Acciones adicionales */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Acciones Adicionales</CardTitle>
-            <CardDescription>
-              Otras funciones disponibles
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <Button 
-                variant="outline" 
-                className="h-16 flex flex-col items-center justify-center hover:bg-indigo-50 hover:border-indigo-300 transition-colors"
-                onClick={() => router.push('/admin/holded')}
-              >
-                <Package className="h-5 w-5 mb-2 text-indigo-600" />
-                <span className="text-sm font-medium">Integración Holded</span>
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                className="h-16 flex flex-col items-center justify-center hover:bg-teal-50 hover:border-teal-300 transition-colors"
-                onClick={() => router.push('/admin/price-alerts')}
-              >
-                <TrendingUp className="h-5 w-5 mb-2 text-teal-600" />
-                <span className="text-sm font-medium">Alertas de Precios</span>
-              </Button>
-              
-              <Button 
-                variant="outline" 
-                className="h-16 flex flex-col items-center justify-center hover:bg-amber-50 hover:border-amber-300 transition-colors"
-                onClick={() => router.push('/admin/analytics')}
-              >
-                <FileText className="h-5 w-5 mb-2 text-amber-600" />
-                <span className="text-sm font-medium">Análisis</span>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
 
         {/* Estado del sistema */}
         <Card>
@@ -269,11 +230,11 @@ export default function AdminDashboard() {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Sistema OCR</span>
-                <span className="text-sm text-muted-foreground">No configurado</span>
+                <span className="text-sm text-green-600">GPT-4o mini Activo</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">API Holded</span>
-                <span className="text-sm text-muted-foreground">No configurado</span>
+                <span className="text-sm text-green-600">Conectado</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Base de Datos</span>

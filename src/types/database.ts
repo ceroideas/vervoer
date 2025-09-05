@@ -49,6 +49,8 @@ export interface ExtractedData {
     tax: number
     total: number
   }
+  // Firma de índice para compatibilidad con Prisma JSON
+  [key: string]: any
 }
 
 // Tipos para autenticación

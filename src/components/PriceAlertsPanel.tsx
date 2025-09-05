@@ -84,6 +84,52 @@ export function PriceAlertsPanel({ onProductUpdate }: PriceAlertsPanelProps) {
     }
   }
 
+  const handleDeleteAlert = async (alertId: string) => {
+    try {
+      const response = await fetch(`/api/price-alerts/${alertId}`, {
+        method: 'DELETE',
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success('Alerta eliminada exitosamente')
+        loadAlerts()
+      } else {
+        toast.error(result.error || 'Error eliminando alerta')
+      }
+    } catch (error) {
+      console.error('Error eliminando alerta:', error)
+      toast.error('Error eliminando alerta')
+    }
+  }
+
+  const handleMarkAsProcessed = async (alertId: string) => {
+    try {
+      const response = await fetch(`/api/price-alerts/${alertId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          isProcessed: true
+        }),
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        toast.success('Alerta marcada como procesada')
+        loadAlerts()
+      } else {
+        toast.error(result.error || 'Error marcando alerta')
+      }
+    } catch (error) {
+      console.error('Error marcando alerta:', error)
+      toast.error('Error marcando alerta')
+    }
+  }
+
   const getAlertIcon = (alertType: string) => {
     switch (alertType) {
       case 'price_increase':
@@ -265,6 +311,22 @@ export function PriceAlertsPanel({ onProductUpdate }: PriceAlertsPanelProps) {
                       title="Actualizar producto en Holded"
                     >
                       <RefreshCw className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleMarkAsProcessed(alert.id)}
+                      title="Marcar como procesada"
+                    >
+                      <CheckCircle className="h-3 w-3" />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => handleDeleteAlert(alert.id)}
+                      title="Eliminar alerta"
+                    >
+                      <XCircle className="h-3 w-3" />
                     </Button>
                   </div>
                 </div>

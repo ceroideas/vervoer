@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
       data: {
         filename,
         originalText,
-        extractedData,
+        extractedData: extractedData as any, // Cast para compatibilidad con Prisma JSON
         documentType,
         userId: session.user.id,
         supplierId,

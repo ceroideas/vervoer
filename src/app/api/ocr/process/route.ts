@@ -1,14 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth-config'
 
 export async function POST(request: NextRequest) {
   try {
     // Verificar autenticación usando NextAuth
-    const session = await getServerSession()
+    const session = await getServerSession(authOptions)
+    console.log('🔍 Session debug:', { session, userId: session?.user?.id })
+    
     if (!session?.user) {
       return NextResponse.json(
         { success: false, error: 'No autorizado' },
+        { status: 401 }
+      )
+    }
+
+    if (!session.user.id) {
+      return NextResponse.json(
+        { success: false, error: 'ID de usuario no disponible en la sesión' },
         { status: 401 }
       )
     }
@@ -32,7 +42,9 @@ export async function POST(request: NextRequest) {
         extractedData: {},
         documentType: file.name.toLowerCase().includes('factura') ? 'INVOICE' : 'DELIVERY_NOTE',
         status: 'PENDING',
-        userId: session.user.id,
+        processedBy: {
+          connect: { id: session.user.id }
+        },
         fileSize: file.size,
         fileType: file.type
       }
@@ -252,7 +264,7 @@ INSTRUCCIONES ESPECÍFICAS:
       where: { id: document.id },
       data: {
         originalText: gptData.choices[0]?.message?.content || '',
-        extractedData: extractedData,
+        extractedData: extractedData as any, // Cast para compatibilidad con Prisma JSON
         status: 'PROCESSED',
         supplierId: supplier?.id,
         documentNumber: extractedData.documentNumber,

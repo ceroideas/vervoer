@@ -5,7 +5,7 @@ import { getServerSession } from 'next-auth'
 // PUT /api/users/[id] - Actualizar usuario
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Verificar autenticación
@@ -23,7 +23,7 @@ export async function PUT(
       return NextResponse.json({ message: 'Acceso denegado' }, { status: 403 })
     }
 
-    const { id } = params
+    const { id } = await params
     const body = await request.json()
     const { name, email, role, isActive } = body
 
@@ -119,7 +119,7 @@ export async function PUT(
 // DELETE /api/users/[id] - Eliminar usuario
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Verificar autenticación
@@ -137,7 +137,7 @@ export async function DELETE(
       return NextResponse.json({ message: 'Acceso denegado' }, { status: 403 })
     }
 
-    const { id } = params
+    const { id } = await params
 
     // Verificar que no se elimine a sí mismo
     if (id === currentUser.id) {

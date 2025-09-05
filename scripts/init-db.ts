@@ -25,6 +25,10 @@ async function main() {
       role: 'ADMIN'
     })
 
+    if (!adminUser) {
+      throw new Error('No se pudo crear el usuario administrador')
+    }
+
     console.log('✅ Usuario administrador creado:')
     console.log(`   Email: ${adminUser.email}`)
     console.log(`   Contraseña: admin123`)
@@ -48,7 +52,11 @@ async function main() {
 
     for (const userData of users) {
       const user = await AuthService.createUser(userData)
-      console.log(`✅ Usuario creado: ${user.email} (${user.role})`)
+      if (user) {
+        console.log(`✅ Usuario creado: ${user.email} (${user.role})`)
+      } else {
+        console.log(`❌ Error creando usuario: ${userData.email}`)
+      }
     }
 
     console.log('\n🎉 Base de datos inicializada correctamente!')

@@ -5,7 +5,7 @@ import { getServerSession } from 'next-auth'
 // GET - Obtener documento específico
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     // Verificar autenticación usando NextAuth
@@ -17,7 +17,7 @@ export async function GET(
       }, { status: 401 })
     }
 
-    const { id } = params
+    const { id } = await params
 
     // Obtener documento con relaciones
     const document = await prisma.document.findUnique({
@@ -72,21 +72,11 @@ export async function PUT(
     const { id } = await params
     const body = await request.json()
     
-    // Verificar autenticación
-    const token = request.cookies.get('auth-token')?.value || 
-                  request.headers.get('authorization')?.replace('Bearer ', '')
-    
-    if (!token) {
+    // Verificar autenticación usando NextAuth
+    const session = await getServerSession()
+    if (!session?.user) {
       return NextResponse.json(
         { success: false, error: 'No autorizado' },
-        { status: 401 }
-      )
-    }
-
-    const currentUser = await AuthService.getCurrentUser(token)
-    if (!currentUser) {
-      return NextResponse.json(
-        { success: false, error: 'Token inválido' },
         { status: 401 }
       )
     }
@@ -129,21 +119,11 @@ export async function DELETE(
   try {
     const { id } = await params
     
-    // Verificar autenticación
-    const token = request.cookies.get('auth-token')?.value || 
-                  request.headers.get('authorization')?.replace('Bearer ', '')
-    
-    if (!token) {
+    // Verificar autenticación usando NextAuth
+    const session = await getServerSession()
+    if (!session?.user) {
       return NextResponse.json(
         { success: false, error: 'No autorizado' },
-        { status: 401 }
-      )
-    }
-
-    const currentUser = await AuthService.getCurrentUser(token)
-    if (!currentUser) {
-      return NextResponse.json(
-        { success: false, error: 'Token inválido' },
         { status: 401 }
       )
     }

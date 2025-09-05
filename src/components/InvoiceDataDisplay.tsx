@@ -249,47 +249,6 @@ export function InvoiceDataDisplay({ data, ocrData, gptData, isLoading }: Invoic
         </Card>
       )}
 
-      {/* Comparación de fuentes (solo si hay datos de ambas fuentes) */}
-      {ocrData && gptData && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Info className="h-5 w-5" />
-              Comparación de Fuentes
-            </CardTitle>
-            <CardDescription>
-              Comparación entre OCR tradicional y GPT-4o mini
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <h4 className="font-medium mb-2 flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-green-500" />
-                  OCR Tradicional
-                </h4>
-                <div className="text-sm space-y-1">
-                  <div>Proveedor: {ocrData.supplier?.name || 'No detectado'}</div>
-                  <div>Productos: {ocrData.items?.length || 0}</div>
-                  <div>Total: {formatCurrency(ocrData.totals?.total)}</div>
-                </div>
-              </div>
-              
-              <div>
-                <h4 className="font-medium mb-2 flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-blue-500" />
-                  GPT-4o mini
-                </h4>
-                <div className="text-sm space-y-1">
-                  <div>Proveedor: {gptData.supplier?.name || 'No detectado'}</div>
-                  <div>Productos: {gptData.items?.length || 0}</div>
-                  <div>Total: {formatCurrency(gptData.totals?.total)}</div>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
 
       {/* Mensaje si no hay datos */}
       {(!data.items || data.items.length === 0) && !data.supplier && !data.documentNumber && (

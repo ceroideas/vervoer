@@ -469,12 +469,12 @@ export default function DocumentsPage() {
     switch (status) {
       case 'PENDING':
         return <Clock className="h-4 w-4 text-yellow-500" />
-      case 'PROCESSING':
-        return <Clock className="h-4 w-4 text-blue-500" />
       case 'PROCESSED':
         return <CheckCircle className="h-4 w-4 text-green-500" />
       case 'ERROR':
         return <AlertTriangle className="h-4 w-4 text-red-500" />
+      case 'SYNCED':
+        return <CheckCircle className="h-4 w-4 text-blue-500" />
       default:
         return <Clock className="h-4 w-4 text-gray-500" />
     }
@@ -484,12 +484,12 @@ export default function DocumentsPage() {
     switch (status) {
       case 'PENDING':
         return 'Pendiente'
-      case 'PROCESSING':
-        return 'Procesando'
       case 'PROCESSED':
         return 'Completado'
       case 'ERROR':
         return 'Error'
+      case 'SYNCED':
+        return 'Sincronizado'
       default:
         return 'Desconocido'
     }
@@ -497,6 +497,27 @@ export default function DocumentsPage() {
 
   const getDocumentTypeText = (type: string) => {
     return type === 'INVOICE' ? 'Factura' : 'Albarán'
+  }
+
+  // Función para mapear DocumentWithRelations a Document (para el modal)
+  const mapDocumentForModal = (doc: DocumentWithRelations) => {
+    return {
+      id: doc.id,
+      name: doc.filename,
+      type: (doc.documentType === 'INVOICE' ? 'invoice' : 'delivery_note') as 'invoice' | 'delivery_note',
+      status: (doc.status === 'PENDING' ? 'pending' : 
+              doc.status === 'PROCESSED' ? 'completed' : 
+              doc.status === 'ERROR' ? 'error' : 'pending') as 'pending' | 'processing' | 'completed' | 'error',
+      uploadedAt: doc.createdAt,
+      supplier: doc.supplier?.name,
+      total: doc.totalAmount,
+      items: doc.items?.length,
+      ocrText: doc.originalText,
+      extractedData: doc.extractedData as any,
+      ocrData: doc.extractedData as any,
+      gptData: doc.extractedData as any,
+      processingMethod: 'gpt-vision' as const
+    }
   }
 
   if (!user) {
@@ -536,12 +557,12 @@ export default function DocumentsPage() {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Procesando</CardTitle>
-              <Clock className="h-4 w-4 text-muted-foreground" />
+              <CardTitle className="text-sm font-medium">Sincronizados</CardTitle>
+              <CheckCircle className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-blue-600">
-                {documents.filter(d => d.status === 'PROCESSING').length}
+                {documents.filter(d => d.status === 'SYNCED').length}
               </div>
             </CardContent>
           </Card>
@@ -644,9 +665,9 @@ export default function DocumentsPage() {
               >
                 <option value="all">Todos los estados</option>
                 <option value="PENDING">Pendientes</option>
-                <option value="PROCESSING">Procesando</option>
                 <option value="PROCESSED">Completados</option>
                 <option value="ERROR">Errores</option>
+                <option value="SYNCED">Sincronizados</option>
               </select>
               </div>
             </CardContent>
@@ -742,7 +763,7 @@ export default function DocumentsPage() {
 
       {/* Modal de detalles del documento */}
       <DocumentDetailsModal
-        document={selectedDocument}
+        document={selectedDocument ? mapDocumentForModal(selectedDocument) : null}
         isOpen={isModalOpen}
         onClose={() => {
           setIsModalOpen(false)
