@@ -4,20 +4,21 @@ import type { NextRequest } from 'next/server'
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
 
-  // Para todas las rutas de API, verificar autenticación
+  // Solo manejar rutas de páginas, no APIs
+  // Las APIs manejan su propia autenticación con NextAuth
   if (pathname.startsWith('/api/')) {
-    // Obtener token
-    const authHeader = request.headers.get('authorization')
-    const token = authHeader?.replace('Bearer ', '') || request.cookies.get('auth-token')?.value
+    return NextResponse.next()
+  }
+
+  // Para páginas protegidas, redirigir al login si no está autenticado
+  const protectedPages = ['/admin']
+  
+  if (protectedPages.some(page => pathname.startsWith(page))) {
+    // Verificar si hay cookies de NextAuth
+    const sessionToken = request.cookies.get('next-auth.session-token')?.value
     
-    // Si es una ruta protegida y no hay token
-    if ((pathname.startsWith('/api/documents') || 
-         pathname.startsWith('/api/suppliers') || 
-         pathname.startsWith('/api/users')) && !token) {
-      return NextResponse.json(
-        { error: 'No autorizado' },
-        { status: 401 }
-      )
+    if (!sessionToken) {
+      return NextResponse.redirect(new URL('/login', request.url))
     }
   }
 

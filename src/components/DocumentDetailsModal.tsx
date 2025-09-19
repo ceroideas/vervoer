@@ -24,6 +24,7 @@ import {
 import { Document, ExtractedData } from '@/types/invoice'
 import { InvoiceDataDisplay } from './InvoiceDataDisplay'
 import { CreateProductModal } from './CreateProductModal'
+import { CreateInvoiceModal } from './CreateInvoiceModal'
 import { PriceAlertBadge } from './PriceAlertBadge'
 import { PriceAlertDetails } from './PriceAlertDetails'
 import { DocumentItemAnalysis, PriceAnalysisResult } from '@/lib/document-price-analysis'
@@ -46,6 +47,7 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
     low: 0,
     total: 0
   })
+  const [showHoldedModal, setShowHoldedModal] = useState(false)
 
   if (!document) return null
 
@@ -140,20 +142,82 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
     return analysis?.priceAnalysis || null;
   };
 
+  // Determinar el tipo de documento para Holded
+  const getHoldedDocumentType = (): 'invoice' | 'waybill' => {
+    const docType = document?.extractedData?.documentType;
+    if (docType === 'delivery_note') {
+      return 'waybill';
+    }
+    return 'invoice'; // Por defecto factura
+  };
+
+  // Preparar datos para el modal de Holded
+  const getHoldedFormData = () => {
+    if (!document?.extractedData) return undefined;
+
+    const extractedData = document.extractedData;
+    
+    // Convertir fecha de dd/mm/yyyy a yyyy-mm-dd
+    const convertDate = (dateStr: string): string => {
+      if (!dateStr) return new Date().toISOString().split('T')[0];
+      
+      console.log('🔍 Fecha original extraída:', dateStr);
+      
+      // Detectar formato dd/mm/yyyy o dd-mm-yyyy
+      const dateMatch = dateStr.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+      if (dateMatch) {
+        const [, day, month, year] = dateMatch;
+        const fullYear = year.length === 2 ? `20${year}` : year;
+        const convertedDate = `${fullYear}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        console.log('✅ Fecha convertida:', convertedDate);
+        return convertedDate;
+      }
+      
+      // Si no coincide con el patrón, intentar parsear como fecha
+      try {
+        const date = new Date(dateStr);
+        if (!isNaN(date.getTime())) {
+          const convertedDate = date.toISOString().split('T')[0];
+          console.log('✅ Fecha parseada:', convertedDate);
+          return convertedDate;
+        }
+      } catch (error) {
+        console.warn('Error parsing date:', dateStr, error);
+      }
+      
+      const fallbackDate = new Date().toISOString().split('T')[0];
+      console.log('⚠️ Usando fecha por defecto:', fallbackDate);
+      return fallbackDate;
+    };
+    
+    return {
+      contactName: extractedData.supplier?.name || 'Proveedor',
+      date: convertDate(extractedData.date || ''),
+      documentNum: extractedData.documentNumber || '',
+      notes: `Documento creado desde: ${document.name}`,
+      items: extractedData.items?.map(item => ({
+        description: item.description || 'Producto',
+        quantity: item.quantity || 1,
+        price: item.unitPrice || 0,
+        tax: 21 // IVA por defecto
+      })) || []
+    };
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-6xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
         <DialogHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-blue-100 rounded-lg">
+              <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0">
                 <FileText className="h-6 w-6 text-blue-600" />
               </div>
-              <div>
-                <DialogTitle className="text-xl font-semibold">
+              <div className="min-w-0 flex-1">
+                <DialogTitle className="text-lg sm:text-xl font-semibold truncate">
                   {document.name}
                 </DialogTitle>
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex flex-wrap items-center gap-2 mt-1">
                   <Badge className={getDocumentTypeColor(document.extractedData?.documentType || 'unknown')}>
                     {getDocumentTypeText(document.extractedData?.documentType || 'unknown')}
                   </Badge>
@@ -163,13 +227,27 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
                 </div>
               </div>
             </div>
+            {document.extractedData && (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <Button
+                  onClick={() => setShowHoldedModal(true)}
+                  className="flex items-center gap-2"
+                  variant="outline"
+                  size="sm"
+                >
+                  <Building2 className="h-4 w-4" />
+                  <span className="hidden sm:inline">Crear en Holded</span>
+                  <span className="sm:hidden">Holded</span>
+                </Button>
+              </div>
+            )}
           </div>
         </DialogHeader>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="details">Detalles</TabsTrigger>
-            <TabsTrigger value="products">Productos</TabsTrigger>
+            <TabsTrigger value="details" className="text-sm sm:text-base">Detalles</TabsTrigger>
+            <TabsTrigger value="products" className="text-sm sm:text-base">Productos</TabsTrigger>
           </TabsList>
 
           <TabsContent value="details" className="space-y-4">
@@ -227,16 +305,16 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
                 {document.extractedData?.items && document.extractedData.items.length > 0 ? (
                   <Card>
                     <CardHeader>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <CardTitle className="text-lg">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                          <CardTitle className="text-base sm:text-lg">
                             Productos Detectados ({document.extractedData.items.length})
                           </CardTitle>
                           <Badge variant="outline" className="text-sm">
                             {document.extractedData.items.length} productos
                           </Badge>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2">
                           {priceAnalysisCompleted && alertCounts.total > 0 && (
                             <div className="flex items-center gap-1">
                               <Badge variant="destructive" className="text-xs">
@@ -252,17 +330,19 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
                             disabled={isAnalyzingPrices}
                             variant="outline"
                             size="sm"
-                            className="flex items-center gap-2"
+                            className="flex items-center gap-2 w-full sm:w-auto"
                           >
                             {isAnalyzingPrices ? (
                               <>
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600"></div>
-                                Analizando...
+                                <span className="hidden sm:inline">Analizando...</span>
+                                <span className="sm:hidden">Analizando</span>
                               </>
                             ) : (
                               <>
                                 <TrendingUp className="h-4 w-4" />
-                                Analizar Precios
+                                <span className="hidden sm:inline">Analizar Precios</span>
+                                <span className="sm:hidden">Analizar</span>
                               </>
                             )}
                           </Button>
@@ -275,23 +355,25 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
                           const priceAnalysis = getPriceAnalysisForItem(index);
                           return (
                           <div key={index} className="p-4 border border-gray-200 rounded-lg hover:border-gray-300 transition-colors">
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-3">
-                                  <span className="font-medium text-lg">
+                            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-2 mb-3">
+                                  <span className="font-medium text-base sm:text-lg truncate">
                                     {item.description || `Producto ${index + 1}`}
                                   </span>
-                                  {item.reference && (
-                                    <Badge variant="outline" className="text-xs">
-                                      Ref: {item.reference}
-                                    </Badge>
-                                  )}
-                                  {priceAnalysis && (
-                                    <PriceAlertBadge analysis={priceAnalysis} />
-                                  )}
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    {item.reference && (
+                                      <Badge variant="outline" className="text-xs">
+                                        Ref: {item.reference}
+                                      </Badge>
+                                    )}
+                                    {priceAnalysis && (
+                                      <PriceAlertBadge analysis={priceAnalysis} />
+                                    )}
+                                  </div>
                                 </div>
                                 
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 text-sm">
                                   <div className="flex items-center gap-2">
                                     <span className="font-medium text-gray-600">Cantidad:</span>
                                     <span className="font-mono">{formatNumber(item.quantity)}</span>
@@ -322,7 +404,7 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
                                 )}
                               </div>
                               
-                              <div className="flex items-center gap-2 ml-4">
+                              <div className="flex items-center gap-2 lg:ml-4 flex-shrink-0">
                                 {priceAnalysis && priceAnalysis.isInHolded ? (
                                   <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
                                     Ya en Holded
@@ -418,16 +500,17 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
 
                 {/* Acciones */}
                 {document.extractedData?.items && document.extractedData.items.length > 0 && (
-                  <div className="flex justify-end gap-3 pt-4 border-t">
+                  <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4 border-t">
                     <Button
                       onClick={() => {
                         // Aquí podrías implementar una función para crear todos los productos de una vez
                         // Crear todos los productos
                       }}
-                      className="flex items-center gap-2"
+                      className="flex items-center justify-center gap-2 w-full sm:w-auto"
                     >
                       <Plus className="h-4 w-4" />
-                      Crear Todos los Productos
+                      <span className="hidden sm:inline">Crear Todos los Productos</span>
+                      <span className="sm:hidden">Crear Todos</span>
                     </Button>
                   </div>
                 )}
@@ -441,6 +524,20 @@ export function DocumentDetailsModal({ document, isOpen, onClose }: DocumentDeta
           </TabsContent>
 
         </Tabs>
+
+        {/* Modal de creación en Holded */}
+        {showHoldedModal && (
+          <CreateInvoiceModal
+            docType={getHoldedDocumentType()}
+            onInvoiceCreated={() => {
+              setShowHoldedModal(false);
+              // Aquí podrías agregar una notificación de éxito
+            }}
+            prefillData={getHoldedFormData()}
+            open={showHoldedModal}
+            onOpenChange={setShowHoldedModal}
+          />
+        )}
       </DialogContent>
     </Dialog>
   )

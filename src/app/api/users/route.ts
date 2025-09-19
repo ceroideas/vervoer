@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import bcrypt from 'bcryptjs'
 import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth-config'
 
 // GET /api/users - Obtener todos los usuarios
 export async function GET() {
   try {
     // Verificar autenticación
-    const session = await getServerSession()
+    const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ message: 'No autorizado' }, { status: 401 })
     }
@@ -67,7 +68,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     // Verificar autenticación
-    const session = await getServerSession()
+    const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ message: 'No autorizado' }, { status: 401 })
     }

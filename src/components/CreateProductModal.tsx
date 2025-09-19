@@ -133,7 +133,7 @@ export function CreateProductModal({ onProductCreated, prefillData }: CreateProd
           Nuevo Producto
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto w-[95vw] sm:w-full">
         <DialogHeader>
           <DialogTitle>Crear Nuevo Producto en Holded</DialogTitle>
           <DialogDescription>
@@ -146,7 +146,7 @@ export function CreateProductModal({ onProductCreated, prefillData }: CreateProd
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Información Básica</h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Nombre *</Label>
                 <Input
@@ -155,6 +155,7 @@ export function CreateProductModal({ onProductCreated, prefillData }: CreateProd
                   onChange={(e) => handleInputChange('name', e.target.value)}
                   placeholder="Nombre del producto"
                   required
+                  className="w-full"
                 />
               </div>
 
@@ -165,6 +166,7 @@ export function CreateProductModal({ onProductCreated, prefillData }: CreateProd
                   value={formData.sku}
                   onChange={(e) => handleInputChange('sku', e.target.value)}
                   placeholder="Código SKU"
+                  className="w-full"
                 />
               </div>
             </div>
@@ -177,10 +179,11 @@ export function CreateProductModal({ onProductCreated, prefillData }: CreateProd
                 onChange={(e) => handleInputChange('description', e.target.value)}
                 placeholder="Descripción del producto"
                 rows={3}
+                className="w-full resize-none"
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="price">Precio de Venta *</Label>
                 <Input
@@ -191,6 +194,7 @@ export function CreateProductModal({ onProductCreated, prefillData }: CreateProd
                   onChange={(e) => handleInputChange('price', e.target.value)}
                   placeholder="0.00"
                   required
+                  className="w-full"
                 />
               </div>
 
@@ -203,6 +207,7 @@ export function CreateProductModal({ onProductCreated, prefillData }: CreateProd
                   value={formData.cost}
                   onChange={(e) => handleInputChange('cost', e.target.value)}
                   placeholder="0.00"
+                  className="w-full"
                 />
               </div>
 
@@ -215,6 +220,7 @@ export function CreateProductModal({ onProductCreated, prefillData }: CreateProd
                   value={formData.tax}
                   onChange={(e) => handleInputChange('tax', e.target.value)}
                   placeholder="0"
+                  className="w-full"
                 />
               </div>
             </div>
@@ -224,7 +230,7 @@ export function CreateProductModal({ onProductCreated, prefillData }: CreateProd
           <div className="space-y-4">
             <h3 className="text-lg font-semibold">Información Adicional</h3>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="stock">Stock Inicial</Label>
                 <Input
@@ -233,6 +239,7 @@ export function CreateProductModal({ onProductCreated, prefillData }: CreateProd
                   value={formData.stock}
                   onChange={(e) => handleInputChange('stock', e.target.value)}
                   placeholder="0"
+                  className="w-full"
                 />
               </div>
 
@@ -245,11 +252,12 @@ export function CreateProductModal({ onProductCreated, prefillData }: CreateProd
                   value={formData.weight}
                   onChange={(e) => handleInputChange('weight', e.target.value)}
                   placeholder="0.00"
+                  className="w-full"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="barcode">Código de Barras</Label>
                 <Input
@@ -257,6 +265,7 @@ export function CreateProductModal({ onProductCreated, prefillData }: CreateProd
                   value={formData.barcode}
                   onChange={(e) => handleInputChange('barcode', e.target.value)}
                   placeholder="Código de barras"
+                  className="w-full"
                 />
               </div>
 
@@ -267,31 +276,35 @@ export function CreateProductModal({ onProductCreated, prefillData }: CreateProd
                   value={formData.tags}
                   onChange={(e) => handleInputChange('tags', e.target.value)}
                   placeholder="Etiquetas separadas por comas"
+                  className="w-full"
                 />
               </div>
             </div>
           </div>
 
           {/* Botones */}
-          <div className="flex justify-end gap-3 pt-4">
+          <div className="flex flex-col sm:flex-row justify-end gap-3 pt-4">
             <Button
               type="button"
               variant="outline"
               onClick={() => setOpen(false)}
               disabled={isLoading}
+              className="w-full sm:w-auto"
             >
               Cancelar
             </Button>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading} className="w-full sm:w-auto">
               {isLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Creando...
+                  <span className="hidden sm:inline">Creando...</span>
+                  <span className="sm:hidden">Creando</span>
                 </>
               ) : (
                 <>
                   <Plus className="h-4 w-4 mr-2" />
-                  Crear Producto
+                  <span className="hidden sm:inline">Crear Producto</span>
+                  <span className="sm:hidden">Crear</span>
                 </>
               )}
             </Button>

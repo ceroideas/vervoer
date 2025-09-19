@@ -24,9 +24,11 @@ import {
 } from 'lucide-react'
 import { CreateProductModal } from '@/components/CreateProductModal'
 import { CreateContactModal } from '@/components/CreateContactModal'
+import { CreateInvoiceModal } from '@/components/CreateInvoiceModal'
 import { ViewProductModal } from '@/components/ViewProductModal'
 import { EditProductModal } from '@/components/EditProductModal'
 import { DeleteProductModal } from '@/components/DeleteProductModal'
+import { HoldedDocumentsList } from '@/components/HoldedDocumentsList'
 import { PriceAlertsPanel } from '@/components/PriceAlertsPanel'
 import { ProductPriceHistory } from '@/components/ProductPriceHistory'
 
@@ -54,11 +56,11 @@ interface HoldedContact {
 
 interface HoldedInvoice {
   id: string;
-  number: string;
+  number?: string;
   date: string;
   contactId: string;
-  contactName: string;
-  items: any[];
+  contactName?: string;
+  items?: any[];
   subtotal: number;
   tax: number;
   total: number;
@@ -66,17 +68,18 @@ interface HoldedInvoice {
   currency: string;
 }
 
-type DataType = 'products' | 'contacts' | 'invoices';
+type DataType = 'products' | 'contacts' | 'invoices' | 'waybills';
 
 export default function HoldedPage() {
   const [dataType, setDataType] = useState<DataType>('products')
   const [products, setProducts] = useState<HoldedProduct[]>([])
   const [contacts, setContacts] = useState<HoldedContact[]>([])
   const [invoices, setInvoices] = useState<HoldedInvoice[]>([])
+  const [waybills, setWaybills] = useState<HoldedInvoice[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [connectionStatus, setConnectionStatus] = useState<'connected' | 'disconnected' | 'checking'>('checking')
-  const [stats, setStats] = useState({ products: 0, contacts: 0, invoices: 0 })
+  const [stats, setStats] = useState({ products: 0, contacts: 0, invoices: 0, waybills: 0 })
 
   // Cargar datos de Holded
   const loadHoldedData = async () => {
@@ -91,7 +94,8 @@ export default function HoldedPage() {
         setStats({
           products: testResult.data.products,
           contacts: testResult.data.contacts,
-          invoices: testResult.data.invoices
+          invoices: testResult.data.invoices,
+          waybills: testResult.data.waybills || 0
         })
       } else {
         setConnectionStatus('disconnected')
@@ -117,6 +121,13 @@ export default function HoldedPage() {
       if (invoicesResponse.ok) {
         const invoicesData = await invoicesResponse.json()
         setInvoices(invoicesData.invoices || [])
+      }
+
+      // Cargar albaranes
+      const waybillsResponse = await fetch('/api/holded/waybills')
+      if (waybillsResponse.ok) {
+        const waybillsData = await waybillsResponse.json()
+        setWaybills(waybillsData.waybills || [])
       }
 
     } catch (error) {
@@ -150,8 +161,13 @@ export default function HoldedPage() {
         )
       case 'invoices':
         return invoices.filter(invoice => 
-          invoice.number.toLowerCase().includes(term) ||
-          invoice.contactName.toLowerCase().includes(term)
+          invoice.number?.toLowerCase().includes(term) ||
+          invoice.contactName?.toLowerCase().includes(term)
+        )
+      case 'waybills':
+        return waybills.filter(waybill => 
+          waybill.number?.toLowerCase().includes(term) ||
+          waybill.contactName?.toLowerCase().includes(term)
         )
       default:
         return []
@@ -226,7 +242,7 @@ export default function HoldedPage() {
         </div>
 
         {/* Estadísticas */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card>
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
@@ -260,6 +276,17 @@ export default function HoldedPage() {
               </div>
             </CardContent>
           </Card>
+          <Card>
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Albaranes</p>
+                  <p className="text-2xl font-bold">{stats.waybills}</p>
+                </div>
+                <FileText className="h-8 w-8 text-orange-500" />
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Panel de Alertas de Precios */}
@@ -268,27 +295,38 @@ export default function HoldedPage() {
         {/* Navegación por tipo de datos */}
         <Card>
           <CardContent className="p-4">
-            <div className="flex space-x-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
               <Button
                 variant={dataType === 'products' ? 'default' : 'outline'}
                 onClick={() => setDataType('products')}
+                className="flex items-center justify-center gap-1 sm:gap-2"
               >
-                <Package className="h-4 w-4 mr-2" />
-                Productos
+                <Package className="h-4 w-4" />
+                <span className="text-xs sm:text-sm">Productos</span>
               </Button>
               <Button
                 variant={dataType === 'contacts' ? 'default' : 'outline'}
                 onClick={() => setDataType('contacts')}
+                className="flex items-center justify-center gap-1 sm:gap-2"
               >
-                <Building2 className="h-4 w-4 mr-2" />
-                Contactos
+                <Building2 className="h-4 w-4" />
+                <span className="text-xs sm:text-sm">Contactos</span>
               </Button>
               <Button
                 variant={dataType === 'invoices' ? 'default' : 'outline'}
                 onClick={() => setDataType('invoices')}
+                className="flex items-center justify-center gap-1 sm:gap-2"
               >
-                <FileText className="h-4 w-4 mr-2" />
-                Facturas
+                <FileText className="h-4 w-4" />
+                <span className="text-xs sm:text-sm">Facturas</span>
+              </Button>
+              <Button
+                variant={dataType === 'waybills' ? 'default' : 'outline'}
+                onClick={() => setDataType('waybills')}
+                className="flex items-center justify-center gap-1 sm:gap-2"
+              >
+                <FileText className="h-4 w-4" />
+                <span className="text-xs sm:text-sm">Albaranes</span>
               </Button>
             </div>
           </CardContent>
@@ -302,23 +340,22 @@ export default function HoldedPage() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
                   <Input
-                    placeholder={`Buscar ${dataType === 'products' ? 'productos' : dataType === 'contacts' ? 'contactos' : 'facturas'}...`}
+                    placeholder={`Buscar ${dataType === 'products' ? 'productos' : dataType === 'contacts' ? 'contactos' : dataType === 'invoices' ? 'facturas' : 'albaranes'}...`}
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
                   />
                 </div>
               </div>
-                             {dataType === 'products' ? (
-                 <CreateProductModal onProductCreated={loadHoldedData} />
-               ) : dataType === 'contacts' ? (
-                 <CreateContactModal onContactCreated={loadHoldedData} />
-               ) : (
-                 <Button>
-                   <Plus className="h-4 w-4 mr-2" />
-                   Nuevo Factura
-                 </Button>
-               )}
+              {dataType === 'products' ? (
+                <CreateProductModal onProductCreated={loadHoldedData} />
+              ) : dataType === 'contacts' ? (
+                <CreateContactModal onContactCreated={loadHoldedData} />
+              ) : dataType === 'invoices' ? (
+                <CreateInvoiceModal onInvoiceCreated={loadHoldedData} docType="invoice" />
+              ) : (
+                <CreateInvoiceModal onInvoiceCreated={loadHoldedData} docType="waybill" />
+              )}
             </div>
           </CardContent>
         </Card>
@@ -327,7 +364,7 @@ export default function HoldedPage() {
         <Card>
           <CardHeader>
             <CardTitle>
-              {dataType === 'products' ? 'Productos' : dataType === 'contacts' ? 'Contactos' : 'Facturas'} 
+              {dataType === 'products' ? 'Productos' : dataType === 'contacts' ? 'Contactos' : dataType === 'invoices' ? 'Facturas' : 'Albaranes'} 
               ({filteredData.length})
             </CardTitle>
           </CardHeader>
@@ -347,7 +384,7 @@ export default function HoldedPage() {
               </div>
             ) : filteredData.length === 0 ? (
               <div className="text-center py-8">
-                <p className="text-gray-600">No se encontraron {dataType === 'products' ? 'productos' : dataType === 'contacts' ? 'contactos' : 'facturas'}</p>
+                <p className="text-gray-600">No se encontraron {dataType === 'products' ? 'productos' : dataType === 'contacts' ? 'contactos' : dataType === 'invoices' ? 'facturas' : 'albaranes'}</p>
               </div>
             ) : (
               <div className="space-y-4">
@@ -417,47 +454,17 @@ export default function HoldedPage() {
                 )}
 
                 {dataType === 'invoices' && (
-                  <div className="space-y-2">
-                    {(filteredData as HoldedInvoice[]).map((invoice: HoldedInvoice) => (
-                      <div key={invoice.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <h3 className="font-medium">{invoice.number}</h3>
-                            <Badge className={getStatusColor(invoice.status)}>
-                              {invoice.status === 'paid' ? 'Pagada' : 
-                               invoice.status === 'sent' ? 'Enviada' : 
-                               invoice.status === 'draft' ? 'Borrador' : 
-                               invoice.status === 'overdue' ? 'Vencida' : 'Cancelada'}
-                            </Badge>
-                          </div>
-                          <div className="text-sm text-gray-600 space-y-1">
-                            <p>Proveedor: {invoice.contactName}</p>
-                            <p>Fecha: {invoice.date}</p>
-                            <p>Items: {invoice.items.length}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <div className="text-right">
-                            <p className="font-medium">{formatCurrency(invoice.total)}</p>
-                            <p className="text-sm text-gray-600">{invoice.currency}</p>
-                          </div>
-                          <div className="flex space-x-2">
-                            <Button size="sm" variant="outline">
-                              <Eye className="h-3 w-3" />
-                            </Button>
-                            <Button size="sm" variant="outline">
-                              <Download className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
+                  <HoldedDocumentsList docType="invoice" />
+                )}
+
+                {dataType === 'waybills' && (
+                  <HoldedDocumentsList docType="waybill" />
                 )}
               </div>
             )}
           </CardContent>
         </Card>
+
       </div>
     </AdminLayout>
   )

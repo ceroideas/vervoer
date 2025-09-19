@@ -81,7 +81,7 @@ export function InvoiceDataDisplay({ data, ocrData, gptData, isLoading }: Invoic
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="flex items-center gap-2">
               <Badge className={getDocumentTypeColor(data.documentType)}>
                 {getDocumentTypeLabel(data.documentType)}
@@ -89,19 +89,21 @@ export function InvoiceDataDisplay({ data, ocrData, gptData, isLoading }: Invoic
             </div>
             
             {data.documentNumber && (
-              <div className="flex items-center gap-2">
-                <span className="font-medium">Número:</span>
-                <span className="font-mono bg-gray-100 px-2 py-1 rounded">
+              <div className="flex flex-col gap-1">
+                <span className="font-medium text-sm sm:text-base">Número:</span>
+                <span className="font-mono bg-gray-100 px-2 py-1 rounded text-sm break-all">
                   {data.documentNumber}
                 </span>
               </div>
             )}
             
             {data.date && (
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-gray-500" />
-                <span className="font-medium">Fecha:</span>
-                <span>{data.date}</span>
+              <div className="flex flex-col gap-1">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-gray-500" />
+                  <span className="font-medium text-sm sm:text-base">Fecha:</span>
+                </div>
+                <span className="text-sm sm:text-base break-all">{data.date}</span>
               </div>
             )}
           </div>
@@ -119,21 +121,21 @@ export function InvoiceDataDisplay({ data, ocrData, gptData, isLoading }: Invoic
           </CardHeader>
           <CardContent className="space-y-2">
             {data.supplier.name && (
-              <div className="flex items-center gap-2">
-                <span className="font-medium">Nombre:</span>
-                <span>{data.supplier.name}</span>
+              <div className="flex flex-col gap-1">
+                <span className="font-medium text-sm sm:text-base">Nombre:</span>
+                <span className="break-all text-sm sm:text-base leading-relaxed">{data.supplier.name}</span>
               </div>
             )}
             {data.supplier.address && (
-              <div className="flex items-center gap-2">
-                <span className="font-medium">Dirección:</span>
-                <span>{data.supplier.address}</span>
+              <div className="flex flex-col gap-1">
+                <span className="font-medium text-sm sm:text-base">Dirección:</span>
+                <span className="break-all text-sm sm:text-base leading-relaxed">{data.supplier.address}</span>
               </div>
             )}
             {data.supplier.taxId && (
-              <div className="flex items-center gap-2">
-                <span className="font-medium">CIF/NIF:</span>
-                <span className="font-mono bg-gray-100 px-2 py-1 rounded">
+              <div className="flex flex-col gap-1">
+                <span className="font-medium text-sm sm:text-base">CIF/NIF:</span>
+                <span className="font-mono bg-gray-100 px-2 py-1 rounded text-sm break-all">
                   {data.supplier.taxId}
                 </span>
               </div>
@@ -152,7 +154,8 @@ export function InvoiceDataDisplay({ data, ocrData, gptData, isLoading }: Invoic
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="overflow-x-auto">
+            {/* Vista de tabla para pantallas grandes */}
+            <div className="hidden lg:block overflow-x-auto">
               <table className="w-full border-collapse">
                 <thead>
                   <tr className="border-b">
@@ -194,6 +197,50 @@ export function InvoiceDataDisplay({ data, ocrData, gptData, isLoading }: Invoic
                 </tbody>
               </table>
             </div>
+            
+            {/* Vista de cards para pantallas pequeñas y medianas */}
+            <div className="lg:hidden space-y-4">
+              {data.items.map((item, index) => (
+                <div key={index} className="border rounded-lg p-4 bg-gray-50">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1 min-w-0">
+                      <h4 className="font-medium text-base break-all leading-tight">
+                        {item.description || `Producto ${index + 1}`}
+                      </h4>
+                      {item.reference && (
+                        <p className="text-sm text-gray-600 font-mono break-all">
+                          Ref: {item.reference}
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right flex-shrink-0 ml-4">
+                      <p className="font-bold text-lg text-green-600">
+                        {formatCurrency(item.totalPrice)}
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                    <div className="min-w-0">
+                      <span className="text-gray-600 text-xs">Cantidad:</span>
+                      <p className="font-medium break-all">{formatNumber(item.quantity)}</p>
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-gray-600 text-xs">Precio Unit.:</span>
+                      <p className="font-medium font-mono break-all">{formatCurrency(item.unitPrice)}</p>
+                    </div>
+                    {item.discount && (
+                      <div className="min-w-0">
+                        <span className="text-gray-600 text-xs">Descuento:</span>
+                        <p className="font-medium font-mono text-red-600 break-all">
+                          {item.discountType === 'percentage' ? `${item.discount}%` : formatCurrency(item.discount)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
       )}
@@ -208,38 +255,38 @@ export function InvoiceDataDisplay({ data, ocrData, gptData, isLoading }: Invoic
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {data.totals.subtotal !== undefined && (
-                <div className="flex justify-between items-center">
-                  <span className="font-medium">Base Imponible:</span>
-                  <span className="font-mono text-lg">
+                <div className="flex justify-between items-center gap-2">
+                  <span className="font-medium text-sm sm:text-base flex-shrink-0">Base Imponible:</span>
+                  <span className="font-mono text-base sm:text-lg break-all text-right">
                     {formatCurrency(data.totals.subtotal)}
                   </span>
                 </div>
               )}
               
               {data.totals.discount !== undefined && data.totals.discount > 0 && (
-                <div className="flex justify-between items-center">
-                  <span className="font-medium text-red-600">Descuento:</span>
-                  <span className="font-mono text-red-600">
+                <div className="flex justify-between items-center gap-2">
+                  <span className="font-medium text-red-600 text-sm sm:text-base flex-shrink-0">Descuento:</span>
+                  <span className="font-mono text-red-600 text-base sm:text-lg break-all text-right">
                     -{formatCurrency(data.totals.discount)}
                   </span>
                 </div>
               )}
               
               {data.totals.tax !== undefined && (
-                <div className="flex justify-between items-center">
-                  <span className="font-medium">IVA:</span>
-                  <span className="font-mono">
+                <div className="flex justify-between items-center gap-2">
+                  <span className="font-medium text-sm sm:text-base flex-shrink-0">IVA:</span>
+                  <span className="font-mono text-base sm:text-lg break-all text-right">
                     {formatCurrency(data.totals.tax)}
                   </span>
                 </div>
               )}
               
               {data.totals.total !== undefined && (
-                <div className="flex justify-between items-center pt-2 border-t">
-                  <span className="font-bold text-lg">TOTAL:</span>
-                  <span className="font-mono font-bold text-lg text-green-600">
+                <div className="flex justify-between items-center pt-2 border-t gap-2">
+                  <span className="font-bold text-base sm:text-lg flex-shrink-0">TOTAL:</span>
+                  <span className="font-mono font-bold text-base sm:text-lg text-green-600 break-all text-right">
                     {formatCurrency(data.totals.total)}
                   </span>
                 </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth-config'
 
 // PUT /api/users/[id] - Actualizar usuario
 export async function PUT(
@@ -9,7 +10,7 @@ export async function PUT(
 ) {
   try {
     // Verificar autenticación
-    const session = await getServerSession()
+    const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ message: 'No autorizado' }, { status: 401 })
     }
@@ -123,7 +124,7 @@ export async function DELETE(
 ) {
   try {
     // Verificar autenticación
-    const session = await getServerSession()
+    const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({ message: 'No autorizado' }, { status: 401 })
     }

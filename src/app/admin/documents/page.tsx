@@ -25,6 +25,7 @@ import { InvoiceProductsModal } from '@/components/InvoiceProductsModal'
 import { DocumentDetailsModal } from '@/components/DocumentDetailsModal'
 import { useAuth } from '@/contexts/AuthContext'
 import { DocumentWithRelations } from '@/types/database'
+import { processImageFile } from '@/utils/imageConverter'
 
 // Importación dinámica de pdfjs para evitar problemas de SSR
 let pdfjsLib: any = null;
@@ -375,9 +376,19 @@ export default function DocumentsPage() {
     setIsUploading(true)
     try {
       for (let i = 0; i < files.length; i++) {
-        const file = files[i]
+        let file = files[i]
         
         try {
+          // Procesar archivo (convertir HEIC a JPEG si es necesario)
+          try {
+            file = await processImageFile(file);
+            console.log('✅ Archivo procesado:', file.name, file.type);
+          } catch (conversionError) {
+            console.error('❌ Error procesando archivo HEIC:', conversionError);
+            console.error(`⚠️ Saltando archivo ${file.name} - formato no compatible`);
+            continue;
+          }
+
           if (processingMethod === 'gpt-vision') {
             // Procesar con GPT-4o mini y guardar en base de datos
             const result = await processWithGPT4Vision(file)
@@ -524,7 +535,12 @@ export default function DocumentsPage() {
     return (
       <AdminLayout title="Gestión de Documentos">
         <div className="flex items-center justify-center h-64">
-          <p className="text-muted-foreground">Debes iniciar sesión para ver los documentos</p>
+          <div className="text-center space-y-4">
+            <p className="text-muted-foreground">Debes iniciar sesión para ver los documentos</p>
+            <Button onClick={() => window.location.href = '/login'}>
+              Ir al Login
+            </Button>
+          </div>
         </div>
       </AdminLayout>
     )
@@ -532,6 +548,7 @@ export default function DocumentsPage() {
 
   return (
     <AdminLayout title="Gestión de Documentos">
+      
       <div className="grid gap-6">
         {/* Estadísticas */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -625,7 +642,7 @@ export default function DocumentsPage() {
                 ref={fileInputRef}
                 type="file"
                 multiple
-                accept=".pdf,.jpg,.jpeg,.png"
+                accept=".pdf,.jpg,.jpeg,.png,.heic,.heif"
                 onChange={handleFileUpload}
                 disabled={isUploading}
                 className="flex-1"
@@ -688,20 +705,20 @@ export default function DocumentsPage() {
               ) : (
                 <div className="space-y-4">
                 {filteredDocuments.map((doc) => (
-                  <div key={doc.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center gap-4">
+                  <div key={doc.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 border rounded-lg gap-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                       <div className="flex items-center gap-2">
                         {getStatusIcon(doc.status)}
                         <span className="text-sm font-medium">{getStatusText(doc.status)}</span>
                       </div>
-                      <div>
-                        <p className="font-medium">{doc.filename}</p>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-medium truncate">{doc.filename}</p>
                         <p className="text-sm text-muted-foreground">
                           {getDocumentTypeText(doc.documentType)} • {new Date(doc.createdAt).toLocaleDateString()}
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-shrink-0">
                       <div className="text-right">
                         {doc.supplier && (
                           <p className="text-sm font-medium">{doc.supplier.name}</p>

@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server'
+import { processImageFile, isSupportedFileType } from '@/utils/imageConverter';
 import OpenAI from 'openai';
 
 
@@ -60,16 +61,27 @@ export async function POST(req: NextRequest) {
     console.log('📏 Tamaño:', file.size, 'bytes');
     console.log('📋 Tipo:', file.type);
 
-    // Verificar tipo de archivo
-    const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'application/pdf', 'image/webp'];
-    if (!allowedTypes.includes(file.type)) {
+    // Verificar tipo de archivo (incluyendo HEIC/HEIF de iPhone)
+    if (!isSupportedFileType(file.type)) {
       return NextResponse.json({ 
-        error: 'Tipo de archivo no soportado. Use: JPG, PNG, PDF' 
+        error: 'Tipo de archivo no soportado. Use: JPG, PNG, PDF, HEIC' 
+      }, { status: 400 });
+    }
+
+    // Procesar archivo (convertir HEIC a JPEG si es necesario)
+    let processedFile = file;
+    try {
+      processedFile = await processImageFile(file);
+      console.log('✅ Archivo procesado:', processedFile.name, processedFile.type);
+    } catch (conversionError) {
+      console.error('❌ Error procesando archivo:', conversionError);
+      return NextResponse.json({ 
+        error: 'Error procesando imagen. Intente con otro formato.' 
       }, { status: 400 });
     }
 
     // Convertir archivo a base64
-    const arrayBuffer = await file.arrayBuffer();
+    const arrayBuffer = await processedFile.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
     const base64Image = buffer.toString('base64');
 

@@ -23,11 +23,11 @@ interface HoldedContact {
 
 interface HoldedInvoice {
   id: string;
-  number: string;
+  number?: string;
   date: string;
   contactId: string;
-  contactName: string;
-  items: HoldedInvoiceItem[];
+  contactName?: string;
+  items?: HoldedInvoiceItem[];
   subtotal: number;
   tax: number;
   total: number;
@@ -159,51 +159,121 @@ export class HoldedClient {
     );
   }
 
-  // ===== FACTURAS =====
+  // ===== DOCUMENTOS (FACTURAS Y ALBARANES) =====
+
+  /**
+   * Obtiene todos los documentos de un tipo específico
+   */
+  async getDocuments(docType: 'invoice' | 'waybill'): Promise<HoldedInvoice[]> {
+    return this.makeRequest(`/documents/${docType}`);
+  }
 
   /**
    * Obtiene todas las facturas
    */
   async getInvoices(): Promise<HoldedInvoice[]> {
-    return this.makeRequest('/documents/invoice');
+    return this.getDocuments('invoice');
+  }
+
+  /**
+   * Obtiene todos los albaranes
+   */
+  async getWaybills(): Promise<HoldedInvoice[]> {
+    return this.getDocuments('waybill');
+  }
+
+  /**
+   * Obtiene un documento específico por ID
+   */
+  async getDocument(docType: 'invoice' | 'waybill', id: string): Promise<HoldedInvoice> {
+    return this.makeRequest(`/documents/${docType}/${id}`);
   }
 
   /**
    * Obtiene una factura específica por ID
    */
   async getInvoice(id: string): Promise<HoldedInvoice> {
-    return this.makeRequest(`/documents/invoice/${id}`);
+    return this.getDocument('invoice', id);
+  }
+
+  /**
+   * Obtiene un albarán específico por ID
+   */
+  async getWaybill(id: string): Promise<HoldedInvoice> {
+    return this.getDocument('waybill', id);
+  }
+
+  /**
+   * Crea un nuevo documento (factura o albarán)
+   */
+  async createDocument(docType: 'invoice' | 'waybill', document: any): Promise<HoldedInvoice> {
+    return this.makeRequest(`/documents/${docType}`, {
+      method: 'POST',
+      body: JSON.stringify(document),
+    });
   }
 
   /**
    * Crea una nueva factura
    */
-  async createInvoice(invoice: Partial<HoldedInvoice>): Promise<HoldedInvoice> {
-    return this.makeRequest('/documents/invoice', {
-      method: 'POST',
-      body: JSON.stringify(invoice),
+  async createInvoice(invoice: any): Promise<HoldedInvoice> {
+    return this.createDocument('invoice', invoice);
+  }
+
+  /**
+   * Crea un nuevo albarán
+   */
+  async createWaybill(waybill: any): Promise<HoldedInvoice> {
+    return this.createDocument('waybill', waybill);
+  }
+
+  /**
+   * Actualiza un documento existente
+   */
+  async updateDocument(docType: 'invoice' | 'waybill', id: string, document: any): Promise<HoldedInvoice> {
+    return this.makeRequest(`/documents/${docType}/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(document),
     });
   }
 
   /**
    * Actualiza una factura existente
    */
-  async updateInvoice(id: string, invoice: Partial<HoldedInvoice>): Promise<HoldedInvoice> {
-    return this.makeRequest(`/documents/invoice/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(invoice),
-    });
+  async updateInvoice(id: string, invoice: any): Promise<HoldedInvoice> {
+    return this.updateDocument('invoice', id, invoice);
+  }
+
+  /**
+   * Actualiza un albarán existente
+   */
+  async updateWaybill(id: string, waybill: any): Promise<HoldedInvoice> {
+    return this.updateDocument('waybill', id, waybill);
+  }
+
+  /**
+   * Busca documentos por número o proveedor
+   */
+  async searchDocuments(docType: 'invoice' | 'waybill', query: string): Promise<HoldedInvoice[]> {
+    const documents = await this.getDocuments(docType);
+    return documents.filter(doc => 
+      doc.number?.toLowerCase().includes(query.toLowerCase()) ||
+      doc.contactName?.toLowerCase().includes(query.toLowerCase())
+    );
   }
 
   /**
    * Busca facturas por número o proveedor
    */
   async searchInvoices(query: string): Promise<HoldedInvoice[]> {
-    const invoices = await this.getInvoices();
-    return invoices.filter(invoice => 
-      invoice.number.toLowerCase().includes(query.toLowerCase()) ||
-      invoice.contactName.toLowerCase().includes(query.toLowerCase())
-    );
+    return this.searchDocuments('invoice', query);
+  }
+
+  /**
+   * Busca albaranes por número o proveedor
+   */
+  async searchWaybills(query: string): Promise<HoldedInvoice[]> {
+    return this.searchDocuments('waybill', query);
   }
 
   // ===== PRODUCTOS =====
@@ -355,6 +425,22 @@ export class HoldedClient {
       console.error('Error creando factura en Holded:', error);
       return null;
     }
+  }
+
+  /**
+   * Obtiene el PDF de un documento específico
+   */
+  async getDocumentPdf(docType: string, id: string): Promise<any> {
+    return this.makeRequest(`/documents/${docType}/${id}/pdf`);
+  }
+
+  /**
+   * Elimina un documento específico
+   */
+  async deleteDocument(docType: string, id: string): Promise<any> {
+    return this.makeRequest(`/documents/${docType}/${id}`, {
+      method: 'DELETE'
+    });
   }
 
   /**

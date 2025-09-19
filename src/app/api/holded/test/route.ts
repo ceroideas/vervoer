@@ -22,6 +22,7 @@ export async function GET(req: NextRequest) {
     let contacts: any[] = [];
     let invoices: any[] = [];
     let products: any[] = [];
+    let waybills: any[] = [];
     
     try {
       contacts = await holdedClient.getContacts();
@@ -40,11 +41,18 @@ export async function GET(req: NextRequest) {
     } catch (error) {
       console.log('❌ Error obteniendo productos:', error);
     }
+    
+    try {
+      waybills = await holdedClient.getWaybills();
+    } catch (error) {
+      console.log('❌ Error obteniendo albaranes:', error);
+    }
 
     console.log('✅ Conexión con Holded exitosa');
     console.log(`📊 Contactos: ${contacts.length}`);
     console.log(`📊 Facturas: ${invoices.length}`);
     console.log(`📊 Productos: ${products.length}`);
+    console.log(`📊 Albaranes: ${waybills.length}`);
 
     return NextResponse.json({
       success: true,
@@ -53,8 +61,10 @@ export async function GET(req: NextRequest) {
         contacts: contacts.length,
         invoices: invoices.length,
         products: products.length,
+        waybills: waybills.length,
         sampleContacts: contacts.slice(0, 3), // Primeros 3 contactos como ejemplo
         sampleInvoices: invoices.slice(0, 3), // Primeras 3 facturas como ejemplo
+        sampleWaybills: waybills.slice(0, 3), // Primeros 3 albaranes como ejemplo
       },
       timestamp: new Date().toISOString()
     });

@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-config'
 import { HoldedClient } from '@/holded/client'
 
-// GET - Obtener facturas de Holded
+// GET - Obtener albaranes de Holded
 export async function GET() {
   try {
     // Verificar autenticación
@@ -13,22 +13,22 @@ export async function GET() {
     }
 
     const holded = new HoldedClient()
-    const invoices = await holded.getInvoices()
+    const waybills = await holded.getWaybills()
 
     return NextResponse.json({
       success: true,
-      invoices: invoices
+      waybills: waybills
     })
   } catch (error) {
-    console.error('Error obteniendo facturas de Holded:', error)
+    console.error('Error obteniendo albaranes de Holded:', error)
     return NextResponse.json({
       success: false,
-      error: 'Error al obtener facturas'
+      error: 'Error al obtener albaranes'
     }, { status: 500 })
   }
 }
 
-// POST - Crear nueva factura en Holded
+// POST - Crear nuevo albarán en Holded
 export async function POST(req: NextRequest) {
   try {
     // Verificar autenticación
@@ -38,18 +38,14 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    console.log('📥 Datos recibidos del frontend:', JSON.stringify(body, null, 2))
-    
     const { 
       contactId, 
       contactName,
       date, 
-      dueDate, 
       currency, 
       notes, 
       items,
-      docType = 'invoice',
-      invoiceNum,
+      invoiceNum, // El frontend envía invoiceNum para ambos tipos
       applyContactDefaults = true,
       approveDoc = true // Siempre aprobar documentos
     } = body
@@ -62,16 +58,9 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
 
-    // Log de fechas para debug
-    console.log('📅 Fechas recibidas:')
-    console.log('  - date:', date, 'tipo:', typeof date)
-    console.log('  - dueDate:', dueDate, 'tipo:', typeof dueDate)
-    console.log('  - new Date(date):', new Date(date))
-    console.log('  - new Date(date).getTime():', new Date(date).getTime())
-
     const holded = new HoldedClient()
     
-    // Calcular fechas correctamente según documentación oficial
+    // Calcular fecha correctamente para albaranes según documentación oficial
     const issueDate = new Date(date)
     
     // Validar que la fecha sea válida
@@ -88,13 +77,13 @@ export async function POST(req: NextRequest) {
     // Holded espera timestamps en SEGUNDOS (Unix timestamp)
     const dateTimestamp = Math.floor(issueDate.getTime() / 1000)
     
-    console.log('📅 Fecha final:')
+    console.log('📅 Fechas del albarán:')
     console.log('  - Fecha original:', date)
     console.log('  - Fecha parseada:', issueDate.toISOString())
     console.log('  - Timestamp (segundos):', dateTimestamp)
     console.log('  - Timestamp (milisegundos):', issueDate.getTime())
     
-    // Debug adicional: verificar si el contacto existe y obtener su nombre
+    // Verificar si el contacto existe y obtener su nombre
     console.log('🔍 Verificando contacto en Holded...')
     let resolvedContactName = ''
     try {
@@ -109,16 +98,16 @@ export async function POST(req: NextRequest) {
       }, { status: 400 })
     }
     
-    // Crear el documento en Holded usando la estructura exacta de la documentación oficial
-    const documentData = {
-      applyContactDefaults: true,
+    // Crear el albarán en Holded usando la estructura exacta de la documentación oficial
+    const waybillData = {
+      applyContactDefaults: applyContactDefaults || true,
       contactId,
       contactName: resolvedContactName,
       desc: notes || '',
       date: dateTimestamp, // Timestamp en segundos (Unix timestamp)
       notes: notes || '',
       currency: currency || 'EUR',
-      invoiceNum: invoiceNum || '',
+      invoiceNum: invoiceNum || '', // Usar invoiceNum para el número de albarán
       approveDoc: true, // Siempre aprobar documentos automáticamente
       items: items.map((item: any) => ({
         name: item.description,
@@ -127,24 +116,25 @@ export async function POST(req: NextRequest) {
         subtotal: item.price, // Precio unitario, Holded calculará el total (units * subtotal)
         discount: 0,
         tax: item.tax || 21,
-        taxes: [`${item.tax || 21}`]
+        taxes: [`${item.tax || 21}`],
+        supplied: '1' // 1 = suministrado para albaranes
       }))
     }
-    
-    console.log('📄 Datos del documento a enviar a Holded:', JSON.stringify(documentData, null, 2))
 
-    const newDocument = await holded.createDocument(docType as 'invoice' | 'waybill', documentData)
+    console.log('📄 Datos del albarán a enviar a Holded:', JSON.stringify(waybillData, null, 2))
+
+    const newWaybill = await holded.createWaybill(waybillData)
 
     return NextResponse.json({
       success: true,
-      document: newDocument,
-      message: `${docType === 'invoice' ? 'Factura' : 'Albarán'} creado exitosamente`
+      waybill: newWaybill,
+      message: 'Albarán creado exitosamente'
     })
   } catch (error) {
-    console.error('Error creando documento en Holded:', error)
+    console.error('Error creando albarán en Holded:', error)
     return NextResponse.json({
       success: false,
-      error: 'Error al crear el documento'
+      error: 'Error al crear el albarán'
     }, { status: 500 })
   }
 }

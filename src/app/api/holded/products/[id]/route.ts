@@ -20,25 +20,43 @@ export async function GET(
       )
     }
 
-    // Buscar producto por ID
-    const product = await prisma.product.findUnique({
-      where: { id },
-      include: {
-        items: true
-      }
-    })
-
-    if (!product) {
+    // Verificar API key de Holded
+    const holdedApiKey = process.env.HOLDED_API_KEY
+    if (!holdedApiKey) {
       return NextResponse.json(
-        { success: false, error: 'Producto no encontrado' },
-        { status: 404 }
+        { success: false, error: 'HOLDED_API_KEY no está configurada' },
+        { status: 500 }
       )
     }
 
-    return NextResponse.json({
-      success: true,
-      data: { product }
-    })
+    // Crear cliente de Holded
+    const holdedClient = new HoldedClient({ apiKey: holdedApiKey })
+
+    try {
+      // Obtener producto de Holded
+      const product = await holdedClient.getProduct(id)
+      
+      return NextResponse.json({
+        success: true,
+        data: { product }
+      })
+
+    } catch (holdedError: any) {
+      console.error('Error obteniendo producto de Holded:', holdedError)
+      
+      // Si el producto no existe en Holded, retornar error apropiado
+      if (holdedError.status === 404) {
+        return NextResponse.json(
+          { success: false, error: 'Producto no encontrado en Holded' },
+          { status: 404 }
+        )
+      }
+
+      return NextResponse.json(
+        { success: false, error: 'Error obteniendo producto de Holded' },
+        { status: 500 }
+      )
+    }
 
   } catch (error) {
     console.error('Error obteniendo producto:', error)
@@ -66,19 +84,70 @@ export async function PUT(
       )
     }
 
-    // Actualizar producto
-    const updatedProduct = await prisma.product.update({
-      where: { id },
-      data: body,
-      include: {
-        items: true
-      }
-    })
+    // Verificar API key de Holded
+    const holdedApiKey = process.env.HOLDED_API_KEY
+    if (!holdedApiKey) {
+      return NextResponse.json(
+        { success: false, error: 'HOLDED_API_KEY no está configurada' },
+        { status: 500 }
+      )
+    }
 
-    return NextResponse.json({
-      success: true,
-      data: { product: updatedProduct }
-    })
+    // Crear cliente de Holded
+    const holdedClient = new HoldedClient({ apiKey: holdedApiKey })
+
+    // Preparar datos para actualizar en Holded según su API
+    const holdedUpdateData: any = {
+      kind: 'simple' // Campo obligatorio según Holded
+    }
+
+    // Mapear campos del frontend a campos de Holded
+    if (body.name !== undefined) holdedUpdateData.name = body.name
+    if (body.description !== undefined) holdedUpdateData.desc = body.description
+    if (body.sku !== undefined) holdedUpdateData.sku = body.sku
+    if (body.price !== undefined) holdedUpdateData.price = body.price ? parseFloat(body.price) : 0
+    if (body.cost !== undefined) {
+      holdedUpdateData.cost = body.cost ? parseFloat(body.cost) : 0
+      holdedUpdateData.calculatecost = body.cost ? parseFloat(body.cost) : 0
+      holdedUpdateData.purchasePrice = body.cost ? parseFloat(body.cost) : 0
+    }
+    if (body.stock !== undefined) holdedUpdateData.stock = body.stock ? parseInt(body.stock) : 0
+    if (body.weight !== undefined) holdedUpdateData.weight = body.weight ? parseFloat(body.weight) : 0
+    if (body.tax !== undefined) holdedUpdateData.tax = body.tax ? parseFloat(body.tax) : 0
+    if (body.barcode !== undefined) holdedUpdateData.barcode = body.barcode || ''
+    if (body.tags !== undefined) {
+      // Convertir string de tags separados por comas a array
+      holdedUpdateData.tags = body.tags ? 
+        body.tags.split(',').map((tag: string) => tag.trim()).filter((tag: string) => tag.length > 0) : 
+        []
+    }
+
+    try {
+      // Actualizar producto en Holded
+      const updatedProduct = await holdedClient.updateProduct(id, holdedUpdateData)
+      
+      return NextResponse.json({
+        success: true,
+        data: { product: updatedProduct },
+        message: 'Producto actualizado exitosamente en Holded'
+      })
+
+    } catch (holdedError: any) {
+      console.error('Error actualizando producto en Holded:', holdedError)
+      
+      // Si el producto no existe en Holded, retornar error apropiado
+      if (holdedError.status === 404) {
+        return NextResponse.json(
+          { success: false, error: 'Producto no encontrado en Holded' },
+          { status: 404 }
+        )
+      }
+
+      return NextResponse.json(
+        { success: false, error: 'Error actualizando producto en Holded' },
+        { status: 500 }
+      )
+    }
 
   } catch (error) {
     console.error('Error actualizando producto:', error)

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth-config'
 
 // GET - Obtener documento específico
 export async function GET(
@@ -9,7 +10,7 @@ export async function GET(
 ) {
   try {
     // Verificar autenticación usando NextAuth
-    const session = await getServerSession()
+    const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json({
         success: false,
@@ -73,7 +74,7 @@ export async function PUT(
     const body = await request.json()
     
     // Verificar autenticación usando NextAuth
-    const session = await getServerSession()
+    const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json(
         { success: false, error: 'No autorizado' },
@@ -120,7 +121,7 @@ export async function DELETE(
     const { id } = await params
     
     // Verificar autenticación usando NextAuth
-    const session = await getServerSession()
+    const session = await getServerSession(authOptions)
     if (!session?.user) {
       return NextResponse.json(
         { success: false, error: 'No autorizado' },

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth-config'
+import { processImageFile, isSupportedFileType } from '@/utils/imageConverter'
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,19 +35,40 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Verificar tipo de archivo (incluyendo HEIC/HEIF de iPhone)
+    if (!isSupportedFileType(file.type)) {
+      return NextResponse.json(
+        { success: false, error: 'Tipo de archivo no soportado. Use: JPG, PNG, PDF, HEIC' },
+        { status: 400 }
+      )
+    }
+
+    // Procesar archivo (convertir HEIC a JPEG si es necesario)
+    let processedFile = file;
+    try {
+      processedFile = await processImageFile(file);
+      console.log('✅ Archivo procesado:', processedFile.name, processedFile.type);
+    } catch (conversionError) {
+      console.error('❌ Error procesando archivo:', conversionError);
+      return NextResponse.json(
+        { success: false, error: 'Error procesando imagen. Intente con otro formato.' },
+        { status: 400 }
+      )
+    }
+
     // Crear documento en estado PENDING
     const document = await prisma.document.create({
       data: {
-        filename: file.name,
+        filename: processedFile.name,
         originalText: '',
         extractedData: {},
-        documentType: file.name.toLowerCase().includes('factura') ? 'INVOICE' : 'DELIVERY_NOTE',
+        documentType: processedFile.name.toLowerCase().includes('factura') ? 'INVOICE' : 'DELIVERY_NOTE',
         status: 'PENDING',
         processedBy: {
           connect: { id: session.user.id }
         },
-        fileSize: file.size,
-        fileType: file.type
+        fileSize: processedFile.size,
+        fileType: processedFile.type
       }
     })
 
@@ -65,7 +87,7 @@ export async function POST(request: NextRequest) {
 
     
     // Convertir archivo a base64
-    const arrayBuffer = await file.arrayBuffer()
+    const arrayBuffer = await processedFile.arrayBuffer()
     const base64 = Buffer.from(arrayBuffer).toString('base64')
     
     // Llamar a la API de GPT-4o mini
