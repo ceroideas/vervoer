@@ -208,21 +208,61 @@ INSTRUCCIONES ESPECÍFICAS:
     // Buscar o crear proveedor
     let supplier = null
     if (extractedData.supplier?.name) {
-      // Primero buscar si ya existe un proveedor con ese nombre
-      supplier = await prisma.supplier.findFirst({
-        where: { name: extractedData.supplier.name }
-      })
+      // Construir condiciones de búsqueda
+      const searchConditions = []
+      
+      // Buscar por nombre
+      if (extractedData.supplier.name) {
+        searchConditions.push({ name: extractedData.supplier.name })
+      }
+      
+      // Buscar por taxId si existe
+      if (extractedData.supplier.taxId) {
+        searchConditions.push({ taxId: extractedData.supplier.taxId })
+      }
+      
+      // Buscar proveedor existente
+      if (searchConditions.length > 0) {
+        supplier = await prisma.supplier.findFirst({
+          where: {
+            OR: searchConditions
+          }
+        })
+      }
       
       // Si no existe, crear uno nuevo
       if (!supplier) {
-        supplier = await prisma.supplier.create({
-          data: {
-            name: extractedData.supplier.name,
-            address: extractedData.supplier.address || null,
-            taxId: extractedData.supplier.taxId || null,
-            isActive: true
+        try {
+          supplier = await prisma.supplier.create({
+            data: {
+              name: extractedData.supplier.name,
+              address: extractedData.supplier.address || null,
+              taxId: extractedData.supplier.taxId || null,
+              isActive: true
+            }
+          })
+        } catch (createError: any) {
+          // Si falla por restricción única, buscar el proveedor existente
+          if (createError.code === 'P2002') {
+            console.log('⚠️ Proveedor ya existe, buscando...')
+            supplier = await prisma.supplier.findFirst({
+              where: {
+                OR: searchConditions
+              }
+            })
+            
+            if (!supplier) {
+              // Si aún no se encuentra, buscar por taxId específicamente
+              if (extractedData.supplier.taxId) {
+                supplier = await prisma.supplier.findUnique({
+                  where: { taxId: extractedData.supplier.taxId }
+                })
+              }
+            }
+          } else {
+            throw createError // Re-lanzar si es otro tipo de error
           }
-        })
+        }
       }
     }
 
